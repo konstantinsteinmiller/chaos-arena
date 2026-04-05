@@ -1,5 +1,5 @@
 {
-  "name": "small-rpg",
+  "name": "chaos-arena",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -9,12 +9,12 @@
     "build": "run-p type-check \"build-only {@}\" --",
     "build-only": "vite build",
     "build:crazy-web": "vite build --mode crazy-web --base=./ ",
-    "build-github-main": "vite build --base=/small-rpg/ --outDir=dist",
-    "build-github-develop": "vite build --base=/small-rpg/develop/ --outDir=dist/develop",
-    "build-github-demo": "vite build --mode demo --base=/small-rpg/demo/ --outDir=dist/demo",
+    "build-github-main": "vite build --base=/chaos-arena/ --outDir=dist",
+    "build-github-develop": "vite build --base=/chaos-arena/develop/ --outDir=dist/develop",
+    "build-github-demo": "vite build --mode demo --base=/chaos-arena/demo/ --outDir=dist/demo",
     "validated-build": "vue-tsc -b && vite build",
-    "deploy": "vite build && surge dist/ --domain small-rpg.surge.sh",
-    "deploy-demo": "vite build --mode demo && surge dist/ --domain small-rpg-demo.surge.sh",
+    "deploy": "vite build && surge dist/ --domain chaos-arena.surge.sh",
+    "deploy-demo": "vite build --mode demo && surge dist/ --domain chaos-arena-demo.surge.sh",
     "type-check": "vue-tsc --build",
     "format": "prettier --write --experimental-cli src",
     "test": "vitest",
@@ -23,12 +23,12 @@
     "native-dev:demo": "dotenv -e .env.nativedemo -- electron-vite dev",
     "native-build": "electron-vite build",
     "native-preview": "electron-vite preview",
-    "native-package:demo": "dotenv -e .env.nativedemo -- pnpm run native-build && electron-builder --config.productName=\"Small RPG Demo\" --config.nsis.shortcutName=\"Small RPG Demo\" --config.directories.output=\"electron/dist-demo\" --config.win.artifactName=\"${productName}-Setup-${version}.${ext}\"",
+    "native-package:demo": "dotenv -e .env.nativedemo -- pnpm run native-build && electron-builder --config.productName=\"Chaos Arena Demo\" --config.nsis.shortcutName=\"Chaos Arena Demo\" --config.directories.output=\"electron/dist-demo\" --config.win.artifactName=\"${productName}-Setup-${version}.${ext}\"",
     "native-package": "dotenv -e .env.native -- pnpm run native-build && electron-builder"
   },
   "build": {
     "appId": "com.game.smallrpg",
-    "productName": "Small RPG",
+    "productName": "Chaos Arena",
     "directories": {
       "output": "electron/dist",
       "buildResources": "electron/resources"
@@ -42,7 +42,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Small RPG"
+      "shortcutName": "Chaos Arena"
     },
     "files": [
       "electron/out/**/*",

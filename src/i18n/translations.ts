@@ -1,6 +1,6 @@
 export default {
   en: {
-    gameName: 'Small RPG',
+    gameName: 'Chaos Arena',
     cancel: 'Cancel',
     close: 'Close',
     understood: 'Understood',
@@ -57,7 +57,7 @@ export default {
     }
   },
   de: {
-    gameName: 'Small RPG',
+    gameName: 'Chaos Arena',
     cancel: 'Abbrechen',
     close: 'Schließen',
     understood: 'Verstanden',
@@ -114,7 +114,7 @@ export default {
     }
   },
   fr: {
-    gameName: 'Small RPG',
+    gameName: 'Chaos Arena',
     cancel: 'Annuler',
     close: 'Fermer',
     understood: 'Compris',
@@ -171,7 +171,7 @@ export default {
     }
   },
   es: {
-    gameName: 'Small RPG',
+    gameName: 'Chaos Arena',
     cancel: 'Cancelar',
     close: 'Cerrar',
     understood: 'Entendido',
@@ -399,7 +399,7 @@ export default {
     }
   },
   ru: {
-    gameName: 'Small RPG',
+    gameName: 'Chaos Arena',
     cancel: 'Отмена',
     close: 'Закрыть',
     understood: 'Понятно',

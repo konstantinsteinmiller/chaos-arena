@@ -3,13 +3,14 @@ import MainMenu from '@/views/MainMenu'
 import CardSelectionView from '@/views/CardSelectionView'
 import BattleField from '@/views/BattleField.vue'
 import CampaignMap from '@/views/CampaignMap'
+import BaybladeArena from '@/views/BaybladeArena'
 import useUser, { isWeb } from '@/use/useUser'
 
 const routes = [
-  { path: '/', name: 'main-menu', component: MainMenu },
+  { path: '/', name: 'main-menu', component: MainMenu, redirect: 'battle' },
   { path: '/deck', name: 'deck', component: CardSelectionView },
   { path: '/campaign', name: 'campaign', component: CampaignMap },
-  { path: '/battle', name: 'battle', component: BattleField }
+  { path: '/battle', name: 'battle', component: BaybladeArena }
 ]
 
 const router = createRouter({
@@ -29,8 +30,8 @@ router.beforeEach((to, from) => {
 
   // Only apply restrictions if it's the Web version
   if (isWeb) {
-    const isFullVersion = url.includes(remoteURL + '/small-rpg/') && !url.includes('/small-rpg/demo/') && !url.includes('/small-rpg/develop/')
-    const isDevelopVersion = url.includes(remoteURL + '/small-rpg/develop/')
+    const isFullVersion = url.includes(remoteURL + '/chaos-arena/') && !url.includes('/chaos-arena/demo/') && !url.includes('/chaos-arena/develop/')
+    const isDevelopVersion = url.includes(remoteURL + '/chaos-arena/develop/')
     const isDev = url.includes('localhost:5173/')
 
     if (isDev) {
@@ -39,7 +40,7 @@ router.beforeEach((to, from) => {
 
     // If user is on Full or Develop without the unlock param, boot them to Demo
     if ((isFullVersion || isDevelopVersion) && !isUnlocked) {
-      window.location.href = remoteURL + '/small-rpg/demo/'
+      window.location.href = remoteURL + '/chaos-arena/demo/'
       return false// Stop execution
     } else if (isUnlocked && (isFullVersion || isDevelopVersion)) {
       localStorage.setItem('full_unlocked', 'true')

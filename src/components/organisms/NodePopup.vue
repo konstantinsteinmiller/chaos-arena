@@ -19,7 +19,7 @@
       //- The Popup Card
       div(
         class="popup-card relative border-4 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden pointer-events-auto border-slate-600/80 bg-black/90"
-        :class="{ '!scale-90 !max-w-xl': isMobileLandscape && node.npcDeck.length >= 5, '!scale-80 !max-w-xl ': isMobileLandscape && node.npcDeck.length > 15, '!max-w-full ': isMobilePortrait }"
+        :class="{ '!scale-90 !max-w-xl': isMobileLandscape && node.npcTeam.length >= 5, '!scale-80 !max-w-xl ': isMobileLandscape && node.npcTeam.length > 15, '!max-w-full ': isMobilePortrait }"
       )
         //- Close Button
         FIconButton(
@@ -38,7 +38,7 @@
           //- Tiny Deck Preview
           div(class="flex justify-center flex-wrap gap-1 mb-5" :class="{ '!mb-2': isMobileLandscape }")
             div(
-              v-for="i in node.npcDeck.length"
+              v-for="i in node.npcTeam.length"
               :key="i"
               class="w-16 h-16"
             )
@@ -74,9 +74,9 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const { allCards } = useModels()
+const { allModels } = useModels()
 
-const npcDeck = ref(allCards.filter((c: Card) => props.node.npcDeck.includes(c.id)))
+const npcDeck = ref(allModels.filter((c: Card) => props.node.npcTeam.includes(c.id)))
 npcDeck.value = npcDeck.value.map((c: Card) => {
   return {
     ...c,

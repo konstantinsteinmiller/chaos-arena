@@ -1,16 +1,14 @@
-# Small RPG
+# Chaos Arena
 
-small rpg inspired by angry birds epic
+Chaos Arena is launchable blade game in a 2d arena, with emphasis on action based gameplay.
 
 It features a github pages deployed CI cd pipeline and a windows build + demo build.
 
-WIP: [playable demo](https://konstantinsteinmiller.github.io/small-rpg/)
+WIP: [playable demo](https://konstantinsteinmiller.github.io/chaos-arena/)
 
-![Small RPG menu](https://github.com/konstantinsteinmiller/small-rpg/blob/main/src/assets/documentation/main-menu.webp)
+![Chaos Arena menu](https://github.com/konstantinsteinmiller/chaos-arena/blob/main/src/assets/documentation/main-menu.webp)
 
-![Campaign Map](https://github.com/konstantinsteinmiller/small-rpg/blob/main/src/assets/documentation/campaing-map.webp)
-
-![NPC Game](https://github.com/konstantinsteinmiller/small-rpg/blob/main/src/assets/documentation/gameplay.webp)
+![Gameplay](https://github.com/konstantinsteinmiller/chaos-arena/blob/main/src/assets/documentation/gameplay.webp)
 
 # Todo
 

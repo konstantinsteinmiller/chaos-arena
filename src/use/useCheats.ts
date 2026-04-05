@@ -12,7 +12,7 @@ const useCheats = () => {
   if (!isCheat.value) return {}
   const { saveCampaign } = useCampaign()
 
-  const { allCards } = useModels()
+  const { allModels } = useModels()
   const { setSettingValue } = useUser()
   const { campaignNodes } = useCampaign()
 
@@ -20,7 +20,7 @@ const useCheats = () => {
    * ACTIONS
    */
   const unlockAllCards = () => {
-    const allCardsCollectionDebug = allCards.map((card: GameCard) => ({
+    const allCardsCollectionDebug = allModels.map((card: GameCard) => ({
       id: card.id,
       count: 1
     }))
@@ -50,9 +50,9 @@ const useCheats = () => {
   }
 
   const printAllIds = () => {
-    const youngIds = allCards.filter((card: GameCard) => card.id.includes('-young'))
-    const middleIds = allCards.filter((card: GameCard) => card.id.includes('-middle'))
-    const oldIds = allCards.filter((card: GameCard) => card.id.includes('-old'))
+    const youngIds = allModels.filter((card: GameCard) => card.id.includes('-young'))
+    const middleIds = allModels.filter((card: GameCard) => card.id.includes('-middle'))
+    const oldIds = allModels.filter((card: GameCard) => card.id.includes('-old'))
     console.warn('[CHEAT] All sorted ids.', youngIds, middleIds, oldIds)
   }
 
@@ -74,7 +74,7 @@ const useCheats = () => {
     'ctrl+shift+g': unlockAllDemoCampaignNodes,
     'ctrl+shift+j': resetCampaign,
     'ctrl+shift+k': printAllIds,
-    'ctrl+shift+d': () => console.log('[DEBUG] Cards:', allCards)
+    'ctrl+shift+d': () => console.log('[DEBUG] Cards:', allModels)
   }
 
   /**

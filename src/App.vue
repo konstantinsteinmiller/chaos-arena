@@ -115,7 +115,7 @@ const allowedToShow = computed(() => (isCrazyWeb && isCrazyGamesUrl()) || !isCra
 
 <style lang="sass">
 *
-  font-family: 'Ribeye', cursive
+  font-family: 'Angry', cursive
   user-select: none
   // Standard
   -webkit-user-select: none

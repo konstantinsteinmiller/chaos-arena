@@ -13,7 +13,7 @@ const resourceCache = {
 }
 
 const STATIC_IMAGES = [
-  'images/logo/logo_512x512.webp',
+  'images/logo/logo_256x256.webp',
   'images/bg/campaign-map_800x710.webp',
   'images/bg/campaign-map_800x1600.webp',
   'images/bg/campaign-map_1600x800.webp',

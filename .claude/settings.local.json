@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//mnt/c/Users/konst/**)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(npx vite:*)"
+    ]
+  }
+}

@@ -6,7 +6,7 @@
       div(class="relative w-full h-full sm:w-32 sm:h-32")
         //- Background (Grayscale)
         img(
-          src="/images/logo/logo_512x512.webp" alt="logo loader"
+          src="/images/logo/logo_256x256.webp" alt="logo loader"
           class="absolute inset-0 w-full h-full object-contain grayscale opacity-30"
         )
 
@@ -16,7 +16,7 @@
           :style="maskStyle"
         )
           img(
-            src="/images/logo/logo_512x512.webp" alt="logo loader"
+            src="/images/logo/logo_256x256.webp" alt="logo loader"
             class="w-full h-full object-contain"
           )
 

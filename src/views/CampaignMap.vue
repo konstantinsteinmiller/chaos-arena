@@ -15,7 +15,7 @@ const { t } = useI18n()
 const router = useRouter()
 const { campaignNodes, mobileNodes, selectedNodeId, activeNode } = useCampaign()
 const { userQuestCampaign, userQuestCards, userCollection, setSettingValue } = useUser()
-const { allCards } = useModels()
+const { allModels } = useModels()
 
 const showQuestReward = ref(false)
 const questType = ref<'campaign' | 'demo-campaign' | 'cards'>('campaign')
@@ -83,7 +83,7 @@ const checkQuests = () => {
   // 2. Check Card Collection Completion
   const parsedCollection = JSON.parse(userCollection.value || '[]')
   const collectedIds = new Set(parsedCollection.filter((c: any) => c.count >= 1).map((c: any) => c.id))
-  const hasEveryCard = allCards.every((card: GameCard) => collectedIds.has(card.id))
+  const hasEveryCard = allModels.every((card: GameCard) => collectedIds.has(card.id))
 
   if (hasEveryCard && !userQuestCards.value) {
     questType.value = 'cards'
