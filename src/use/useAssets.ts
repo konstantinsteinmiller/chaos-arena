@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { modelImgPath } from '@/use/useModels.ts'
+import { modelImgPath, BAYBLADE_MODEL_IDS } from '@/use/useModels.ts'
 import { prependBaseUrl } from '@/utils/function.ts'
 
 // Shared state so it can be accessed by both the loader and the progress component
@@ -20,29 +20,19 @@ const STATIC_IMAGES = [
   'images/bg/oak_600x588.webp',
   'images/icons/difficulty-icon_128x128.webp',
   'images/icons/settings-icon_128x128.webp',
-  'images/icons/sound-icon_128x128.webp'
+  'images/icons/sound-icon_128x128.webp',
+  'images/icons/team_128x128.webp'
 ]
 
 const BG_IMAGE = [
-  '/images/board/papyrus-tile_128x128.webp',
-  'images/board/papyrus-tile_128x128.webp',
-  './images/board/papyrus-tile_128x128.webp',
   '/images/bg/bg_1024x1024.webp',
   'images/bg/bg_1024x1024.webp',
   './images/bg/bg_1024x1024.webp'
 ]
 
 const SOUND_ASSETS = [
-  'audio/sfx/plus.ogg',
-  'audio/sfx/same.ogg',
-  'audio/sfx/combo.ogg',
-  'audio/sfx/turn-card.ogg',
-  'audio/sfx/hover-card.ogg',
-  'audio/sfx/place-card.ogg',
-  'audio/sfx/draw.ogg',
   'audio/sfx/win.ogg',
   'audio/sfx/lose.ogg',
-  'audio/sfx/card-pack-open.ogg',
   'audio/sfx/reward-continue.ogg'
 ]
 
@@ -55,10 +45,12 @@ export default () => {
   const preloadAssets = async () => {
     if (areAllAssetsLoaded.value) return
 
-    // Combine static list with the recursively found model images
+    // Combine static list with the model images
+    const baybladeModelImages = BAYBLADE_MODEL_IDS.map(id => modelImgPath(id))
     const allImages = [
       ...BG_IMAGE,
-      ...STATIC_IMAGES.map(src => prependBaseUrl(src))
+      ...STATIC_IMAGES.map(src => prependBaseUrl(src)),
+      ...baybladeModelImages
     ]
 
     const allAssets = [

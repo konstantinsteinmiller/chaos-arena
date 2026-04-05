@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import type { Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import FButton from '@/components/atoms/FButton'
+import FIconButton from '@/components/atoms/FIconButton'
 import FReward from '@/components/atoms/FReward'
 import BaybladeConfigModal from '@/components/organisms/BaybladeConfigModal'
 import useBaybladeGame from '@/use/useBaybladeGame'
@@ -277,11 +278,12 @@ onUnmounted(() => {
         v-if="showConfigButton && !showReward"
         class="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 pointer-events-auto"
       )
-        FButton(
+        FIconButton(
           type="secondary"
-          size="sm"
+          size="lg"
+          img-src="/images/icons/team_128x128.webp"
           @click="onOpenConfig"
-        ) {{ t('bayblade.buildTeam') }}
+        )
 
     //- Reward Overlay
     FReward(

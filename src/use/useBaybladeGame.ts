@@ -9,6 +9,8 @@ import type {
   SpritesheetAnimation
 } from '@/types/bayblade'
 import { computeStats } from '@/use/useBaybladeConfig'
+import { baybladeModelImgPath } from '@/use/useModels'
+import type { TopPartId } from '@/types/bayblade'
 
 // ─── Physics Constants ───────────────────────────────────────────────────────
 
@@ -18,7 +20,7 @@ const BASE_MAX_FORCE = 14
 const STOP_THRESHOLD = 0.25
 const DAMAGE_SCALE = 10
 const HIT_FLASH_FRAMES = 50
-const NPC_THINK_MS = 1500
+const NPC_THINK_MS = 500
 const BOUNCE_DAMPENING = 0.75
 // Wall bounces BOOST speed instead of dampening — ricochet strategy
 const WALL_BOOST_FACTOR = 1.2
@@ -92,7 +94,7 @@ export const useBaybladeGame = () => {
   const playerBlades: Ref<BaybladeState[]> = ref([])
   const npcBlades: Ref<BaybladeState[]> = ref([])
 
-  // All blades in one flat array for physics iteration
+  // All models in one flat array for physics iteration
   const allBlades = computed<BaybladeState[]>(() =>
     [...playerBlades.value, ...npcBlades.value]
   )
@@ -145,6 +147,19 @@ export const useBaybladeGame = () => {
   const activeSparks: SpritesheetAnimation[] = []
   const sparkCooldowns = new Map<string, number>() // "a_b" -> last spawn timestamp
 
+  // ── Blade Model Images ──────────────────────────────────────────────────
+  const bladeModelImages = new Map<string, HTMLImageElement>()
+
+  const getBladeModelImage = (topPartId: TopPartId, owner: 'player' | 'npc'): HTMLImageElement | null => {
+    const key = `${topPartId}_${owner}`
+    let img = bladeModelImages.get(key)
+    if (!img) {
+      img = preloadImage(baybladeModelImgPath(topPartId, owner))
+      bladeModelImages.set(key, img)
+    }
+    return img.complete ? img : null
+  }
+
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
   let nextBladeId = 0
@@ -193,13 +208,13 @@ export const useBaybladeGame = () => {
     stopPhysics()
     nextBladeId = 0
 
-    // Player blades: bottom half, spread apart
+    // Player models: bottom half, spread apart
     playerBlades.value = [
       createBladeState('player', -ARENA_RADIUS * 0.35, ARENA_RADIUS * 0.4, pTeam[0]),
       createBladeState('player', ARENA_RADIUS * 0.35, ARENA_RADIUS * 0.4, pTeam[1])
     ]
 
-    // NPC blades: top half
+    // NPC models: top half
     npcBlades.value = [
       createBladeState('npc', -ARENA_RADIUS * 0.35, -ARENA_RADIUS * 0.4, nTeam[0]),
       createBladeState('npc', ARENA_RADIUS * 0.35, -ARENA_RADIUS * 0.4, nTeam[1])
@@ -515,7 +530,7 @@ export const useBaybladeGame = () => {
       }
     }
 
-    // Game over: all blades of one side dead
+    // Game over: all models of one side dead
     const playerAlive = livingBlades(playerBlades.value).length
     const npcAlive = livingBlades(npcBlades.value).length
 
@@ -570,7 +585,7 @@ export const useBaybladeGame = () => {
     const ny = blade.y / maxDist
     const dot = blade.vx * nx + blade.vy * ny
 
-    // Speed-based boost: faster blades bounce harder
+    // Speed-based boost: faster models bounce harder
     const currentSpeed = Math.sqrt(blade.vx * blade.vx + blade.vy * blade.vy)
     const stats = statsFor(blade)
     const maxSpeed = BASE_MAX_FORCE * stats.speedMultiplier
@@ -630,7 +645,7 @@ export const useBaybladeGame = () => {
     b.vx = (b.vx - bDot * nx + aDot * nx) * BOUNCE_DAMPENING
     b.vy = (b.vy - bDot * ny + aDot * ny) * BOUNCE_DAMPENING
 
-    // Separate overlapping blades
+    // Separate overlapping models
     const overlap = minDist - dist
     a.x -= (overlap / 2) * nx
     a.y -= (overlap / 2) * ny
@@ -687,7 +702,7 @@ export const useBaybladeGame = () => {
     renderArena(ctx)
     renderMeteorShower(ctx)
 
-    // Render all blades
+    // Render all models
     for (const blade of allBlades.value) {
       if (blade.hp <= 0) continue
       renderBlade(ctx, blade)
@@ -767,30 +782,39 @@ export const useBaybladeGame = () => {
 
   const renderBlade = (ctx: CanvasRenderingContext2D, blade: BaybladeState) => {
     const { x, y, rotation, owner, hitFlash, hp, maxHp, radius } = blade
-    const stats = statsFor(blade)
     const isPlayer = owner === 'player'
 
     // Outer metallic ring
-    ctx.strokeStyle = '#555'
+    ctx.strokeStyle = isPlayer ? '#4488cc' : '#cc4444'
     ctx.lineWidth = 3
     ctx.beginPath()
     ctx.arc(x, y, radius + 2, 0, Math.PI * 2)
     ctx.stroke()
 
-    // Hub fill
-    ctx.fillStyle = isPlayer ? '#1a4a8a' : '#8a1a1a'
+    // Circular clip for the model image
+    ctx.save()
     ctx.beginPath()
     ctx.arc(x, y, radius, 0, Math.PI * 2)
+    ctx.clip()
+
+    // Hub fill (fallback if image not loaded)
+    ctx.fillStyle = isPlayer ? '#1a4a8a' : '#8a1a1a'
     ctx.fill()
 
-    // Rotating shape
-    ctx.save()
-    ctx.translate(x, y)
-    ctx.rotate(rotation)
-    renderBladeShape(ctx, stats.top.shape, radius * 0.75, isPlayer)
+    // Model image (rotates with blade)
+    const modelImg = getBladeModelImage(blade.config.topPartId, owner)
+    if (modelImg) {
+      ctx.translate(x, y)
+      ctx.rotate(rotation)
+      const imgSize = radius * 2
+      ctx.drawImage(modelImg, -imgSize / 2, -imgSize / 2, imgSize, imgSize)
+      ctx.rotate(-rotation)
+      ctx.translate(-x, -y)
+    }
+
     ctx.restore()
 
-    // Hit flash overlay (white → red → orange → white)
+    // Hit flash overlay (white -> red -> orange -> white)
     if (hitFlash > 0) {
       ctx.globalAlpha = (hitFlash / HIT_FLASH_FRAMES) * 0.7
       const progress = 1 - hitFlash / HIT_FLASH_FRAMES
@@ -805,85 +829,6 @@ export const useBaybladeGame = () => {
     }
 
     renderHealthRing(ctx, x, y, hp, maxHp, radius)
-  }
-
-  const renderBladeShape = (
-    ctx: CanvasRenderingContext2D,
-    shape: string, r: number, isPlayer: boolean
-  ) => {
-    ctx.fillStyle = isPlayer ? '#4488cc' : '#cc4444'
-    ctx.strokeStyle = isPlayer ? '#6ab0ff' : '#ff6666'
-    ctx.lineWidth = 1.5
-
-    switch (shape) {
-      case 'star': {
-        ctx.beginPath()
-        for (let i = 0; i < 10; i++) {
-          const angle = (i * Math.PI) / 5 - Math.PI / 2
-          const rad = i % 2 === 0 ? r : r * 0.4
-          if (i === 0) ctx.moveTo(Math.cos(angle) * rad, Math.sin(angle) * rad)
-          else ctx.lineTo(Math.cos(angle) * rad, Math.sin(angle) * rad)
-        }
-        ctx.closePath()
-        ctx.fill()
-        ctx.stroke()
-        break
-      }
-      case 'triangle': {
-        ctx.beginPath()
-        for (let i = 0; i < 3; i++) {
-          const angle = (i * Math.PI * 2) / 3 - Math.PI / 2
-          if (i === 0) ctx.moveTo(Math.cos(angle) * r, Math.sin(angle) * r)
-          else ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r)
-        }
-        ctx.closePath()
-        ctx.fill()
-        ctx.stroke()
-        break
-      }
-      case 'circle': {
-        ctx.beginPath()
-        ctx.arc(0, 0, r, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.stroke()
-        ctx.strokeStyle = isPlayer ? '#2266aa' : '#aa2222'
-        for (let i = 0; i < 6; i++) {
-          const angle = (i * Math.PI) / 3
-          ctx.beginPath()
-          ctx.moveTo(0, 0)
-          ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r)
-          ctx.stroke()
-        }
-        break
-      }
-      case 'square': {
-        const h = r * 0.85
-        ctx.beginPath()
-        ctx.moveTo(-h, -h)
-        ctx.lineTo(h, -h)
-        ctx.lineTo(h, h)
-        ctx.lineTo(-h, h)
-        ctx.closePath()
-        ctx.fill()
-        ctx.stroke()
-        break
-      }
-      case 'cushion': {
-        ctx.beginPath()
-        ctx.arc(0, 0, r, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.stroke()
-        const dotR = r * 0.2
-        ctx.fillStyle = isPlayer ? '#66aaee' : '#ee6666'
-        for (let i = 0; i < 5; i++) {
-          const angle = (i * Math.PI * 2) / 5
-          ctx.beginPath()
-          ctx.arc(Math.cos(angle) * r * 0.6, Math.sin(angle) * r * 0.6, dotR, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        break
-      }
-    }
   }
 
   const renderHealthRing = (

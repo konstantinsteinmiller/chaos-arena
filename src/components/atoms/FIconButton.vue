@@ -1,56 +1,97 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps<{
-  icon?: 'close' | 'left' | 'right' // Default to 'close' if not provided
-}>()
+interface Props {
+  icon?: 'close' | 'left' | 'right'
+  imgSrc?: string
+  type?: 'danger' | 'primary' | 'secondary'
+  size?: 'sm' | 'md' | 'lg'
+}
 
-const emit = defineEmits(['close'])
+const props = withDefaults(defineProps<Props>(), {
+  icon: 'close',
+  type: 'danger',
+  size: 'md'
+})
+
+const emit = defineEmits(['click'])
 
 const selectedIcon = computed(() => {
   switch (props.icon) {
     case 'left':
-      return {
-        viewBox: '0 0 24 24',
-        path: 'M15 19l-7-7 7-7' // Simple left arrow path
-      }
+      return { viewBox: '0 0 24 24', path: 'M15 19l-7-7 7-7' }
     case 'right':
-      return {
-        viewBox: '0 0 24 24',
-        path: 'M9 5l7 7-7 7' // Simple right arrow path
-      }
+      return { viewBox: '0 0 24 24', path: 'M9 5l7 7-7 7' }
     case 'close':
     default:
+      return { viewBox: '0 0 24 24', path: 'M6 18L18 6M6 6l12 12' }
+  }
+})
+
+const theme = computed(() => {
+  switch (props.type) {
+    case 'secondary':
       return {
-        viewBox: '0 0 24 24',
-        path: 'M6 18L18 6M6 6l12 12' // Close 'X' path
+        bg: 'bg-gradient-to-b from-[#50aaff] to-[#2266ff]',
+        shadow: 'bg-[#102e7a]',
+        border: 'border-[#0f1a30]'
       }
+    case 'primary':
+      return {
+        bg: 'bg-gradient-to-b from-[#ffcd00] to-[#f7a000]',
+        shadow: 'bg-[#1a2b4b]',
+        border: 'border-[#0f1a30]'
+      }
+    case 'danger':
+    default:
+      return {
+        bg: 'bg-[#ff3e3e]',
+        shadow: 'bg-[#6b1212]',
+        border: 'border-[#0f1a30]'
+      }
+  }
+})
+
+const sizeClasses = computed(() => {
+  switch (props.size) {
+    case 'sm':
+      return { btn: 'p-1.5', icon: 'h-4 w-4', img: 'h-5 w-5', scale: 'scale-60 sm:scale-80' }
+    case 'lg':
+      return { btn: 'p-3', icon: 'h-6 w-6', img: 'h-9 w-9', scale: 'scale-80 sm:scale-110' }
+    case 'md':
+    default:
+      return { btn: 'p-2', icon: 'h-4 w-4', img: 'h-7 w-7', scale: 'scale-60 sm:scale-100' }
   }
 })
 </script>
 
 <template lang="pug">
   button(
-    @click="emit('close')"
-    class="absolute group cursor-pointer z-10 hover:scale-[103%] transition-transform active:scale-40 sm:active:scale-90 scale-60 sm:scale-100"
+    @click="emit('click')"
+    :class="[\
+      'group cursor-pointer z-10 hover:scale-[103%] transition-transform active:scale-90',\
+      sizeClasses.scale\
+    ]"
   )
-    div(class="relative")
-      div(
-        class="absolute inset-0 translate-y-1 rounded-lg bg-[#6b1212]"
-        :class="{\
-          '!bg-[#1a2b4b]': icon === 'right' || icon === 'left'\
-        }")
-      div(
-        class="relative bg-[#ff3e3e] border-2 border-[#0f1a30] rounded-lg p-2 text-white font-bold"
-        :class="{\
-          '!border-[#1a2b4b] !bg-amber-400': icon === 'right' || icon === 'left'\
-        }"
-        :style="{ backgroundImage: `!linear-gradient(to bottom, '#ffcd00', '#f7a000')` }"
+    div.relative
+      div.absolute.inset-0.translate-y-1.rounded-lg(
+        :class="theme.shadow"
       )
-        // Dynamically set viewBox and use computed path
+      div.relative.rounded-lg.border-2.text-white.font-bold(
+        :class="[theme.bg, theme.border, sizeClasses.btn]"
+      )
+        //- Image icon
+        img(
+          v-if="imgSrc"
+          :src="imgSrc"
+          :class="sizeClasses.img"
+          class="object-contain"
+        )
+        //- SVG icon
         svg(
+          v-else
           xmlns="http://www.w3.org/2000/svg"
-          class="h-4 w-4"
+          :class="sizeClasses.icon"
           fill="none"
           :viewBox="selectedIcon.viewBox"
           stroke="currentColor"
