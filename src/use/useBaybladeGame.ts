@@ -12,7 +12,7 @@ import { computeStats } from '@/use/useBaybladeConfig'
 // ─── Physics Constants ───────────────────────────────────────────────────────
 
 export const ARENA_RADIUS = 200
-export const BLADE_RADIUS = 18
+export const BLADE_RADIUS = 15
 const BASE_MAX_FORCE = 14
 const STOP_THRESHOLD = 0.25
 const DAMAGE_SCALE = 10
@@ -21,6 +21,11 @@ const NPC_THINK_MS = 1500
 const BOUNCE_DAMPENING = 0.75
 // Wall bounces BOOST speed instead of dampening — ricochet strategy
 const WALL_BOOST_FACTOR = 1.2
+// Bounce decay: reduce wall boost by 12% per bounce after the first, min 30% effectiveness
+const WALL_BOUNCE_DECAY_PER_HIT = 0.12
+const WALL_BOUNCE_MIN_EFFECTIVENESS = 0.30
+// Extra padding around the arena so drags near the edge have room
+const ARENA_PADDING = 5
 // Blade needs time to reach full speed after launch
 const ACCEL_FRAMES = 28
 // Long pull distance — enables wild mega-pulls that risk hitting own team
@@ -60,6 +65,9 @@ export const useBaybladeGame = () => {
   const isDragging: Ref<boolean> = ref(false)
   const dragStart: Ref<{ x: number; y: number }> = ref({ x: 0, y: 0 })
   const dragCurrent: Ref<{ x: number; y: number }> = ref({ x: 0, y: 0 })
+  // Last valid drag direction (normalized) — used when pointer leaves viewport
+  let lastDragNx = 0
+  let lastDragNy = 0
 
   const dragVector = computed(() => ({
     dx: dragCurrent.value.x - dragStart.value.x,
@@ -118,6 +126,7 @@ export const useBaybladeGame = () => {
       rotation: 0,
       rotationSpeed: 0.05,
       hitFlash: 0,
+      wallBounceCount: 0,
       config,
       owner
     }
@@ -238,6 +247,15 @@ export const useBaybladeGame = () => {
   const updateDrag = (gameX: number, gameY: number) => {
     if (!isDragging.value) return
     dragCurrent.value = { x: gameX, y: gameY }
+
+    // Track last valid drag direction for out-of-viewport release
+    const dx = dragCurrent.value.x - dragStart.value.x
+    const dy = dragCurrent.value.y - dragStart.value.y
+    const mag = Math.sqrt(dx * dx + dy * dy)
+    if (mag > 3) {
+      lastDragNx = -dx / mag
+      lastDragNy = -dy / mag
+    }
   }
 
   const releaseDrag = () => {
@@ -268,6 +286,33 @@ export const useBaybladeGame = () => {
     blade.ax = (nx * targetForce) / ACCEL_FRAMES
     blade.ay = (ny * targetForce) / ACCEL_FRAMES
     blade.accelFramesLeft = ACCEL_FRAMES
+    blade.wallBounceCount = 0
+
+    launchedBladeId.value = blade.id
+    isDragging.value = false
+    phase.value = 'player_launched'
+  }
+
+  /** Pointer left the viewport while dragging — launch at max force in last direction */
+  const forceReleaseDragAtMax = () => {
+    if (!isDragging.value || !selectedBlade.value) return
+
+    // Need a valid direction from prior drag movement
+    if (lastDragNx === 0 && lastDragNy === 0) {
+      isDragging.value = false
+      return
+    }
+
+    const blade = selectedBlade.value
+    const stats = statsFor(blade)
+    const maxForce = BASE_MAX_FORCE * stats.speedMultiplier
+
+    blade.vx = 0
+    blade.vy = 0
+    blade.ax = (lastDragNx * maxForce) / ACCEL_FRAMES
+    blade.ay = (lastDragNy * maxForce) / ACCEL_FRAMES
+    blade.accelFramesLeft = ACCEL_FRAMES
+    blade.wallBounceCount = 0
 
     launchedBladeId.value = blade.id
     isDragging.value = false
@@ -310,6 +355,7 @@ export const useBaybladeGame = () => {
     blade.ax = (Math.cos(angle) * targetForce) / ACCEL_FRAMES
     blade.ay = (Math.sin(angle) * targetForce) / ACCEL_FRAMES
     blade.accelFramesLeft = ACCEL_FRAMES
+    blade.wallBounceCount = 0
 
     launchedBladeId.value = blade.id
     phase.value = 'npc_launched'
@@ -332,7 +378,7 @@ export const useBaybladeGame = () => {
           // Auto-select first living player blade
           const first = livingBlades(playerBlades.value)[0]
           if (first) selectedBladeId.value = first.id
-        }, 1000)
+        }, 500)
       }
       return
     }
@@ -450,9 +496,17 @@ export const useBaybladeGame = () => {
     const ny = blade.y / maxDist
     const dot = blade.vx * nx + blade.vy * ny
 
-    // BOOST instead of dampening — wall ricochets accelerate the blade
-    blade.vx = (blade.vx - 2 * dot * nx) * WALL_BOOST_FACTOR
-    blade.vy = (blade.vy - 2 * dot * ny) * WALL_BOOST_FACTOR
+    // Compute effective boost: decays 12% per bounce after the first, min 30%
+    const decayBounces = Math.max(0, blade.wallBounceCount) // bounces before first don't decay
+    const effectiveness = Math.max(
+      WALL_BOUNCE_MIN_EFFECTIVENESS,
+      1 - decayBounces * WALL_BOUNCE_DECAY_PER_HIT
+    )
+    const effectiveBoost = 1 + (WALL_BOOST_FACTOR - 1) * effectiveness
+
+    blade.vx = (blade.vx - 2 * dot * nx) * effectiveBoost
+    blade.vy = (blade.vy - 2 * dot * ny) * effectiveBoost
+    blade.wallBounceCount++
   }
 
   const resolveCollision = (a: BaybladeState, b: BaybladeState) => {
@@ -527,7 +581,7 @@ export const useBaybladeGame = () => {
 
   const render = (ctx: CanvasRenderingContext2D, canvasSize: number) => {
     const center = canvasSize / 2
-    const scale = canvasSize / (ARENA_RADIUS * 2 + 40)
+    const scale = canvasSize / (ARENA_RADIUS * 2 + ARENA_PADDING)
 
     ctx.fillStyle = '#0d1117'
     ctx.fillRect(0, 0, canvasSize, canvasSize)
@@ -846,7 +900,7 @@ export const useBaybladeGame = () => {
     px: number, py: number, canvasSize: number
   ): { x: number; y: number } => {
     const center = canvasSize / 2
-    const scale = canvasSize / (ARENA_RADIUS * 2 + 40)
+    const scale = canvasSize / (ARENA_RADIUS * 2 + ARENA_PADDING)
     return {
       x: (px - center) / scale,
       y: (py - center) / scale
@@ -875,6 +929,7 @@ export const useBaybladeGame = () => {
     beginDrag,
     updateDrag,
     releaseDrag,
+    forceReleaseDragAtMax,
     stopPhysics,
     spawnMeteorShower,
 

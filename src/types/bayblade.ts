@@ -74,6 +74,7 @@ export interface BaybladeState {
   rotation: number
   rotationSpeed: number
   hitFlash: number
+  wallBounceCount: number
   config: BaybladeConfig
   owner: 'player' | 'npc'
 }

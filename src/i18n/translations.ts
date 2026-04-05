@@ -31,30 +31,6 @@ export default {
       metal: 'Metal',
       neutral: 'Neutral'
     },
-    rule: {
-      high: 'High',
-      low: 'Low',
-      same: 'Same',
-      plus: 'Plus',
-      combo: 'Combo',
-      open: 'Open',
-      one: 'One',
-      all: 'All',
-      conquered: 'Conquered',
-      random: 'Random'
-    },
-    'rule-desc': {
-      high: 'Big numbers win! A higher number flips a lower number.',
-      low: 'Small numbers win! A lower number flips a higher number.',
-      same: 'Equal! If your numbers match two or more sides of the cards next to you, you flip them both. 3=3 and 1=1',
-      plus: 'Math Power! Add your number to the neighbor\'s number. If the totals match on two sides, you flip those cards. 2+5 = 7 and 3+4 = 7',
-      combo: 'Chain Reaction! When you flip a card with Same or Plus, those cards can flip their neighbors too!',
-      open: 'No Secrets! You can see all of your opponent\'s cards, and they can see yours.',
-      one: 'Winner\'s Choice! The winner picks any one card from the loser\'s hand.',
-      all: 'Mega Win! The winner takes every single card from the loser\'s hand.',
-      conquered: 'Color Capture! You keep every card that is your color on the board when the game ends.',
-      random: 'Lucky Dip! The winner gets one surprise card from the loser\'s hand.'
-    }
   },
   de: {
     gameName: 'Chaos Arena',
@@ -88,30 +64,6 @@ export default {
       metal: 'Metall',
       neutral: 'Neutral'
     },
-    rule: {
-      high: 'Hoch',
-      low: 'Niedrig',
-      same: 'Gleich',
-      plus: 'Plus',
-      combo: 'Kombo',
-      open: 'Offen',
-      one: 'Eine',
-      all: 'Alle',
-      conquered: 'Erobert',
-      random: 'Zufällig'
-    },
-    'rule-desc': {
-      high: 'Große Zahlen gewinnen! Eine höhere Zahl dreht eine niedrigere Zahl um.',
-      low: 'Kleine Zahlen gewinnen! Eine niedrigere Zahl dreht eine höhere Zahl um.',
-      same: 'Genau! Wenn deine Zahlen mit zwei oder mehr Seiten der Karten neben dir übereinstimmen, drehst du sie beide um. 3=3 und 1=1',
-      plus: 'Mathe Power! Addiere deine Zahl zur Zahl des Nachbarn. Wenn die Gesamtsummen auf zwei Seiten übereinstimmen, drehst du diese Karten um. 2+5 = 7 und 3+4 = 7',
-      combo: 'Kettenreaktion! Wenn du eine Karte mit Gleich oder Plus umdrehst, können diese Karten auch ihre Nachbarn umdrehen!',
-      open: 'Keine Geheimnisse! Du kannst alle Karten deines Gegners sehen, und er kann deine sehen.',
-      one: 'Gewinner wählt! Der Gewinner wählt eine Karte aus der Hand des Verlierers.',
-      all: 'Mega Sieg! Der Gewinner nimmt alle Karten aus der Hand des Verlierers.',
-      conquered: 'Farb Eroberung! Du behältst alle Karten, die deine Farbe auf dem Spielfeld haben, wenn das Spiel endet.',
-      random: 'Glücksfall! Der Gewinner erhält eine Überraschungskarte aus der Hand des Verlierers.'
-    }
   },
   fr: {
     gameName: 'Chaos Arena',
@@ -145,30 +97,6 @@ export default {
       metal: 'Métal',
       neutral: 'Neutre'
     },
-    rule: {
-      high: 'Fort',
-      low: 'Faible',
-      same: 'Identique',
-      plus: 'Plus',
-      combo: 'Combo',
-      open: 'Ouvert',
-      one: 'Une',
-      all: 'Toutes',
-      conquered: 'Conquis',
-      random: 'Aléatoire'
-    },
-    'rule-desc': {
-      high: 'Les grands nombres gagnent ! Un nombre plus élevé retourne un nombre plus bas.',
-      low: 'Les petits nombres gagnent ! Un nombre plus bas retourne un nombre plus élevé.',
-      same: 'Égalité ! Si vos numéros correspondent à deux côtés ou plus des cartes adjacentes, vous les retournez toutes les deux. 3=3 et 1=1',
-      plus: 'Puissance Maths ! Ajoutez votre nombre à celui du voisin. Si les totaux correspondent sur deux côtés, vous retournez ces cartes. 2+5 = 7 et 3+4 = 7',
-      combo: 'Réaction en chaîne ! Lorsque vous retournez une carte avec Identique ou Plus, ces cartes peuvent aussi retourner leurs voisines !',
-      open: 'Pas de secrets ! Vous pouvez voir toutes les cartes de votre adversaire, et il peut voir les vôtres.',
-      one: 'Choix du vainqueur ! Le gagnant choisit une carte dans la main du perdant.',
-      all: 'Méga Victoire ! Le gagnant prend toutes les cartes de la main du perdant.',
-      conquered: 'Capture de couleur ! Vous gardez chaque carte de votre couleur sur le plateau à la fin de la partie.',
-      random: 'Pochette surprise ! Le gagnant reçoit une carte surprise de la main du perdant.'
-    }
   },
   es: {
     gameName: 'Chaos Arena',
@@ -214,18 +142,6 @@ export default {
       conquered: 'Conquistado',
       random: 'Aleatorio'
     },
-    'rule-desc': {
-      high: '¡Los números grandes ganan! Un número mayor voltea a uno menor.',
-      low: '¡Los números pequeños ganan! Un número menor voltea a uno mayor.',
-      same: '¡Igualdad! Si tus números coinciden en dos o más lados con las cartas adyacentes, volteas ambas. 3=3 y 1=1',
-      plus: '¡Poder Matemático! Suma tu número al del vecino. Si los totales coinciden en dos lados, volteas esas cartas. 2+5 = 7 y 3+4 = 7',
-      combo: '¡Reacción en Cadena! Cuando volteas una carta con Igual o Suma, ¡esas cartas también pueden voltear a sus vecinas!',
-      open: '¡Sin secretos! Puedes ver todas las cartas de tu oponente y ellos pueden ver las tuyas.',
-      one: '¡Elección del ganador! El ganador elige una carta de la mano del perdedor.',
-      all: '¡Mega Victoria! El ganador se lleva todas las cartas de la mano del perdedor.',
-      conquered: '¡Captura de Color! Te quedas con cada carta de tu color en el tablero al final del juego.',
-      random: '¡Sorteo de la suerte! El ganador recibe una carta sorpresa de la mano del perdedor.'
-    }
   },
   jp: {
     gameName: 'カードクエスト',
@@ -259,30 +175,6 @@ export default {
       metal: 'メタル',
       neutral: '無属性'
     },
-    rule: {
-      high: 'ハイ',
-      low: 'ロー',
-      same: 'セイム',
-      plus: 'プラス',
-      combo: 'コンボ',
-      open: 'オープン',
-      one: '1枚',
-      all: '全部',
-      conquered: 'コンカード',
-      random: 'ランダム'
-    },
-    'rule-desc': {
-      high: '大きい数字の勝ち！高い数字が低い数字を裏返します。',
-      low: '小さい数字の勝ち！低い数字が高い数字を裏返します。',
-      same: '等しい！隣接するカードの2辺以上の数字が一致すると、その両方を裏返せます。3=3、1=1など。',
-      plus: '計算パワー！自分の数字と隣の数字を足します。2辺の合計が一致すれば、それらのカードを裏返せます。2+5=7、3+4=7など。',
-      combo: '連鎖反応！「セイム」や「プラス」でカードを裏返すと、そのカードがさらに隣のカードを裏返すことがあります！',
-      open: '秘密なし！相手のすべてのカードを見ることができ、相手もあなたのカードを見ることができます。',
-      one: '勝者の選択！勝者は敗者の手札から好きなカードを1枚選べます。',
-      all: 'メガ勝利！勝者は敗者の手札をすべて手に入れます。',
-      conquered: 'カラーキャプチャー！ゲーム終了時にボード上にある自分の色のカードをすべて獲得します。',
-      random: 'ラッキーディップ！勝者は敗者の手札からランダムに1枚カードを受け取ります。'
-    }
   },
   kr: {
     gameName: '카드 퀘스트',
@@ -316,30 +208,6 @@ export default {
       metal: '금속',
       neutral: '중립'
     },
-    rule: {
-      high: '하이',
-      low: '로우',
-      same: '세임',
-      plus: '플러스',
-      combo: '콤보',
-      open: '오픈',
-      one: '한 장',
-      all: '모두',
-      conquered: '정복',
-      random: '랜덤'
-    },
-    'rule-desc': {
-      high: '큰 숫자가 승리합니다! 높은 숫자가 낮은 숫자를 뒤집습니다.',
-      low: '작은 숫자가 승리합니다! 낮은 숫자가 높은 숫자를 뒤집습니다.',
-      same: '동일함! 내 숫자가 인접한 카드의 두 면 이상과 일치하면 두 카드를 모두 뒤집습니다. 3=3 및 1=1',
-      plus: '수학의 힘! 내 숫자와 인접한 숫자를 더합니다. 두 면의 합계가 일치하면 해당 카드들을 뒤집습니다. 2+5 = 7 및 3+4 = 7',
-      combo: '연쇄 반응! 세임 또는 플러스로 카드를 뒤집으면, 그 카드들이 인접한 카드들도 뒤집을 수 있습니다!',
-      open: '비밀 없음! 상대방의 모든 카드를 볼 수 있으며, 상대방도 내 카드를 볼 수 있습니다.',
-      one: '승자의 선택! 승자가 패자의 손패에서 카드 한 장을 선택합니다.',
-      all: '메가 승리! 승자가 패자의 손패에 있는 모든 카드를 가져갑니다.',
-      conquered: '색상 점유! 게임 종료 시 보드에 있는 자신의 색상 카드를 모두 유지합니다.',
-      random: '행운의 뽑기! 승자가 패자의 손패에서 무작위로 카드 한 장을 받습니다.'
-    }
   },
   zh: {
     gameName: '卡牌任务',
@@ -373,30 +241,6 @@ export default {
       metal: '金属',
       neutral: '中性'
     },
-    rule: {
-      high: '高',
-      low: '低',
-      same: '同数',
-      plus: '加法',
-      combo: '连击',
-      open: '公开',
-      one: '一张',
-      all: '全部',
-      conquered: '占领',
-      random: '随机'
-    },
-    'rule-desc': {
-      high: '大数获胜！较高的数字可以翻转较低的数字。',
-      low: '小数获胜！较低的数字可以翻转较高的数字。',
-      same: '相等！如果你的数字与相邻卡牌的两边或多边匹配，你将同时翻转它们。如 3=3 和 1=1。',
-      plus: '数学力量！将你的数字与相邻数字相加。如果两边的总和相等，你将翻转这些卡牌。如 2+5 = 7 和 3+4 = 7。',
-      combo: '连锁反应！当你通过“同数”或“加法”翻转卡牌时，这些卡牌也可以翻转它们相邻的卡牌！',
-      open: '没有秘密！你可以看到对手的所有卡牌，他们也可以看到你的。',
-      one: '赢家选择！赢家从输家的手牌中任选一张卡牌。',
-      all: '大获全胜！赢家拿走输家手牌中的每一张卡牌。',
-      conquered: '颜色占领！游戏结束时，你保留棋盘上属于你颜色的所有卡牌。',
-      random: '随机抽取！赢家从输家的手牌中随机获得一张卡牌。'
-    }
   },
   ru: {
     gameName: 'Chaos Arena',
@@ -430,29 +274,5 @@ export default {
       metal: 'Металл',
       neutral: 'Нейтрал'
     },
-    rule: {
-      high: 'Высокий',
-      low: 'Низкий',
-      same: 'Сходство',
-      plus: 'Плюс',
-      combo: 'Комбо',
-      open: 'Открыто',
-      one: 'Одна',
-      all: 'Все',
-      conquered: 'Захвачено',
-      random: 'Случайно'
-    },
-    'rule-desc': {
-      high: 'Большие числа побеждают! Большее число переворачивает меньшее.',
-      low: 'Маленькие числа побеждают! Меньшее число переворачивает большее.',
-      same: 'Равенство! Если ваши числа совпадают с двумя или более сторонами соседних карт, вы переворачиваете обе. 3=3 и 1=1',
-      plus: 'Сила математики! Сложите ваше число с числом соседа. Если суммы на двух сторонах совпадают, вы переворачиваете эти карты. 2+5 = 7 и 3+4 = 7',
-      combo: 'Цепная реакция! Когда вы переворачиваете карту через «Сходство» или «Плюс», эти карты могут перевернуть и своих соседей!',
-      open: 'Без секретов! Вы видите все карты противника, а он видит ваши.',
-      one: 'Выбор победителя! Победитель забирает одну любую карту из руки проигравшего.',
-      all: 'Мега-победа! Победитель забирает все карты из руки проигравшего.',
-      conquered: 'Захват цвета! Вы оставляете себе все карты вашего цвета на поле в конце игры.',
-      random: 'Счастливый случай! Победитель получает одну случайную карту из руки проигравшего.'
-    }
   }
 }

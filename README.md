@@ -23,6 +23,9 @@ WIP: [playable demo](https://konstantinsteinmiller.github.io/chaos-arena/)
 - [ ] basic gameplay
     - [ ]
 
+- [ ] Reward system
+    - [ ] wheel spinner for 2x, 3x, 4x and 5x rewards after rewarded videos
+
 - [ ] Npc logic
     - [ ]
 

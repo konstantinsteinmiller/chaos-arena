@@ -21,6 +21,7 @@ const {
   beginDrag,
   updateDrag,
   releaseDrag,
+  forceReleaseDragAtMax,
   stopPhysics,
   render,
   pixelToGame
@@ -121,6 +122,11 @@ const onPointerUp = () => {
   releaseDrag()
 }
 
+const onPointerLeave = () => {
+  if (!isDragging.value) return
+  forceReleaseDragAtMax()
+}
+
 // ─── Game Over ─────────────────────────────────────────────────────────────
 
 watch(isGameOver, (over) => {
@@ -183,7 +189,8 @@ onUnmounted(() => {
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
-      @pointercancel="onPointerUp"
+      @pointercancel="onPointerLeave"
+      @pointerleave="onPointerLeave"
       class="block touch-none"
     )
 
