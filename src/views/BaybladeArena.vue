@@ -5,8 +5,9 @@ import { useI18n } from 'vue-i18n'
 import FIconButton from '@/components/atoms/FIconButton'
 import FReward from '@/components/atoms/FReward'
 import BaybladeConfigModal from '@/components/organisms/BaybladeConfigModal'
-import useBaybladeGame from '@/use/useBaybladeGame'
+import useBaybladeGame, { BLADE_RADIUS } from '@/use/useBaybladeGame'
 import useBaybladeConfig from '@/use/useBaybladeConfig'
+import { useHint } from '@/use/useHint'
 import type { BaybladeConfig } from '@/types/bayblade'
 
 // ─── Game & Config ─────────────────────────────────────────────────────────
@@ -30,12 +31,15 @@ const {
 } = useBaybladeGame()
 
 const { playerTeam, coins, saveTeam, addCoins } = useBaybladeConfig()
+const { showHint, startHintTimer, clearHint } = useHint(5000)
 const { t } = useI18n()
 
 // ─── Canvas Refs ───────────────────────────────────────────────────────────
 
 const canvasRef: Ref<HTMLCanvasElement | null> = ref(null)
 const canvasSize: Ref<number> = ref(0)
+const canvasWidth: Ref<number> = ref(0)
+const canvasHeight: Ref<number> = ref(0)
 const configModalOpen: Ref<boolean> = ref(false)
 const coinsAwarded: Ref<boolean> = ref(false)
 
@@ -53,6 +57,16 @@ const randomNpcTeam = (): BaybladeConfig[] => {
   const shuffled = [...NPC_POOL].sort(() => Math.random() - 0.5)
   return [shuffled[0], shuffled[1]]
 }
+
+// ─── Hint Timer ───────────────────────────────────────────────────────────
+
+watch(phase, (p) => {
+  if (p === 'player_turn') {
+    startHintTimer()
+  } else {
+    clearHint()
+  }
+})
 
 // ─── Computed ──────────────────────────────────────────────────────────────
 
@@ -87,10 +101,11 @@ const showTurnIndicator = computed(() =>
 const updateCanvasSize = () => {
   const canvas = canvasRef.value
   if (!canvas) return
-  const size = Math.min(window.innerWidth, window.innerHeight) * 0.99
-  canvasSize.value = size
-  canvas.width = size
-  canvas.height = size
+  canvasWidth.value = window.innerWidth
+  canvasHeight.value = window.innerHeight
+  canvasSize.value = Math.min(canvasWidth.value, canvasHeight.value)
+  canvas.width = canvasWidth.value
+  canvas.height = canvasHeight.value
 }
 
 // ─── Pointer Event Handlers ────────────────────────────────────────────────
@@ -102,11 +117,13 @@ const getGameCoords = (e: PointerEvent) => {
   return pixelToGame(
     e.clientX - rect.left,
     e.clientY - rect.top,
-    canvasSize.value
+    canvasWidth.value,
+    canvasHeight.value
   )
 }
 
 const onPointerDown = (e: PointerEvent) => {
+  clearHint()
   if (phase.value === 'tap_to_start') {
     startMatch()
     return
@@ -115,20 +132,37 @@ const onPointerDown = (e: PointerEvent) => {
   beginDrag(coords.x, coords.y)
 }
 
+const isHoveringBlade = (gameX: number, gameY: number): boolean => {
+  if (phase.value !== 'player_turn') return false
+  for (const blade of playerBlades.value) {
+    if (blade.hp <= 0) continue
+    const dx = gameX - blade.x
+    const dy = gameY - blade.y
+    if (Math.sqrt(dx * dx + dy * dy) < BLADE_RADIUS * 3) return true
+  }
+  return false
+}
+
 const onPointerMove = (e: PointerEvent) => {
-  if (!isDragging.value) return
   const coords = getGameCoords(e)
-  updateDrag(coords.x, coords.y)
+  if (isDragging.value) {
+    updateDrag(coords.x, coords.y)
+    canvasRef.value!.style.cursor = 'grabbing'
+    return
+  }
+  canvasRef.value!.style.cursor = isHoveringBlade(coords.x, coords.y) ? 'grab' : ''
 }
 
 const onPointerUp = () => {
   if (!isDragging.value) return
   releaseDrag()
+  if (canvasRef.value) canvasRef.value.style.cursor = ''
 }
 
 const onPointerLeave = () => {
   if (!isDragging.value) return
   forceReleaseDragAtMax()
+  if (canvasRef.value) canvasRef.value.style.cursor = ''
 }
 
 // ─── Game Over ─────────────────────────────────────────────────────────────
@@ -165,7 +199,7 @@ const renderLoop = () => {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  render(ctx, canvasSize.value)
+  render(ctx, canvasWidth.value, canvasHeight.value, showHint.value)
   renderRafId = requestAnimationFrame(renderLoop)
 }
 
@@ -185,8 +219,8 @@ onUnmounted(() => {
 </script>
 
 <template lang="pug">
-  div.relative.w-screen.h-screen.overflow-hidden.flex.items-center.justify-center(
-    class="bg-[#0a0e17]"
+  div.arena.relative.w-screen.h-screen.overflow-hidden.flex.items-center.justify-center(
+    class="bg-[#0d1117]"
   )
     //- Game Canvas
     canvas(

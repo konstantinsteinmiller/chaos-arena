@@ -12,14 +12,16 @@ import { computeStats } from '@/use/useBaybladeConfig'
 import { baybladeModelImgPath } from '@/use/useModels'
 import type { TopPartId } from '@/types/bayblade'
 import { isDebug } from '@/use/useMatch.ts'
+import { isMobileLandscape, isMobilePortrait } from '@/use/useUser.ts'
 
 // ─── Physics Constants ───────────────────────────────────────────────────────
 
 export const ARENA_RADIUS = 200
-export const BLADE_RADIUS = 15
+const isDesktop = window.innerWidth > 600 && window.innerHeight > 600 && !isMobilePortrait.value && !isMobileLandscape.value
+export const BLADE_RADIUS = isDesktop ? 26 : 21
 const BASE_MAX_FORCE = 14
 const STOP_THRESHOLD = 0.25
-const DAMAGE_SCALE = isDebug.value ? 100 : 10
+const DAMAGE_SCALE = isDebug.value ? 10 : 1
 const HIT_FLASH_FRAMES = 50
 const NPC_THINK_MS = 500
 const BOUNCE_DAMPENING = 0.75
@@ -237,7 +239,7 @@ export const useBaybladeGame = () => {
     if (phase.value !== 'tap_to_start') return
 
     // Trigger meteor shower intro
-    spawnMeteorShower(60, 15, 80)
+    spawnMeteorShower(80, 50, 65)
     phase.value = 'meteor_intro'
     meteorIntroTimer = 0
     startPhysics()
@@ -250,19 +252,25 @@ export const useBaybladeGame = () => {
     spawnRadius: number,
     maxLife: number
   ) => {
+    // Spawn in staggered waves — delay spread across ~60% of maxLife
+    // so particles keep appearing throughout most of the animation
+    const maxDelay = Math.floor(maxLife * 0.6)
     const particles: MeteorParticle[] = []
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.3
       const spawnDist = spawnRadius + (Math.random() - 0.5) * 6
       const spd = 1.5 + Math.random() * 2.5
+      const lifeVar = maxLife + Math.floor(Math.random() * 20)
+      // Stagger: life starts above maxLife; particle waits until life <= maxLife
+      const delay = Math.floor(Math.random() * maxDelay)
       particles.push({
         x: Math.cos(angle) * spawnDist,
         y: Math.sin(angle) * spawnDist,
         vx: Math.cos(angle) * spd,
         vy: Math.sin(angle) * spd,
-        life: maxLife + Math.floor(Math.random() * 20),
-        maxLife: maxLife + Math.floor(Math.random() * 20),
-        hue: 190 + Math.floor(Math.random() * 40) // cyan-blue range
+        life: lifeVar + delay,
+        maxLife: lifeVar,
+        hue: Math.random() < 0.25 ? 20 + Math.floor(Math.random() * 25) : 190 + Math.floor(Math.random() * 40)
       })
     }
     meteorParticles.value = particles
@@ -271,16 +279,19 @@ export const useBaybladeGame = () => {
   const updateMeteorParticles = () => {
     const alive: MeteorParticle[] = []
     for (const p of meteorParticles.value) {
-      p.x += p.vx
-      p.y += p.vy
-      // Slight outward acceleration for circular spread feel
-      const dist = Math.sqrt(p.x * p.x + p.y * p.y)
-      if (dist > 0.1) {
-        p.vx += (p.x / dist) * 0.02
-        p.vy += (p.y / dist) * 0.02
-      }
       p.life--
-      if (p.life > 0) alive.push(p)
+      if (p.life <= 0) continue
+      // Only move once the delay has elapsed (life <= maxLife)
+      if (p.life <= p.maxLife) {
+        p.x += p.vx
+        p.y += p.vy
+        const dist = Math.sqrt(p.x * p.x + p.y * p.y)
+        if (dist > 0.1) {
+          p.vx += (p.x / dist) * 0.02
+          p.vy += (p.y / dist) * 0.02
+        }
+      }
+      alive.push(p)
     }
     meteorParticles.value = alive
   }
@@ -631,26 +642,8 @@ export const useBaybladeGame = () => {
 
     const aSpeed = speed(a)
     const bSpeed = speed(b)
-    const aStats = statsFor(a)
-    const bStats = statsFor(b)
 
-    // Damage based on current speed (low if still accelerating = nearby hit)
-    if (aSpeed > STOP_THRESHOLD) {
-      const dmg = (aSpeed * aStats.damageMultiplier * aStats.totalWeight)
-        / (bStats.totalWeight * bStats.defenseMultiplier)
-        * DAMAGE_SCALE
-      b.hp = Math.max(0, b.hp - dmg)
-      b.hitFlash = HIT_FLASH_FRAMES
-    }
-    if (bSpeed > STOP_THRESHOLD) {
-      const dmg = (bSpeed * bStats.damageMultiplier * bStats.totalWeight)
-        / (aStats.totalWeight * aStats.defenseMultiplier)
-        * DAMAGE_SCALE
-      a.hp = Math.max(0, a.hp - dmg)
-      a.hitFlash = HIT_FLASH_FRAMES
-    }
-
-    // Elastic bounce
+    // Elastic bounce FIRST — must happen before damage so killing blows still bounce
     const aDot = a.vx * nx + a.vy * ny
     const bDot = b.vx * nx + b.vy * ny
 
@@ -665,6 +658,25 @@ export const useBaybladeGame = () => {
     a.y -= (overlap / 2) * ny
     b.x += (overlap / 2) * nx
     b.y += (overlap / 2) * ny
+
+    // Damage based on pre-bounce speed
+    const aStats = statsFor(a)
+    const bStats = statsFor(b)
+
+    if (aSpeed > STOP_THRESHOLD) {
+      const dmg = (aSpeed * aStats.damageMultiplier * aStats.totalWeight)
+        / (bStats.totalWeight * bStats.defenseMultiplier)
+        * DAMAGE_SCALE
+      b.hp = Math.max(0, b.hp - dmg)
+      b.hitFlash = HIT_FLASH_FRAMES
+    }
+    if (bSpeed > STOP_THRESHOLD) {
+      const dmg = (bSpeed * bStats.damageMultiplier * bStats.totalWeight)
+        / (aStats.totalWeight * aStats.defenseMultiplier)
+        * DAMAGE_SCALE
+      a.hp = Math.max(0, a.hp - dmg)
+      a.hitFlash = HIT_FLASH_FRAMES
+    }
 
     // Spark VFX at collision point (with cooldown per pair)
     const pairKey = a.id < b.id ? `${a.id}_${b.id}` : `${b.id}_${a.id}`
@@ -702,15 +714,17 @@ export const useBaybladeGame = () => {
 
   // ─── Canvas Rendering ────────────────────────────────────────────────────
 
-  const render = (ctx: CanvasRenderingContext2D, canvasSize: number) => {
-    const center = canvasSize / 2
-    const scale = canvasSize / (ARENA_RADIUS * 2 + ARENA_PADDING)
+  const render = (ctx: CanvasRenderingContext2D, canvasWidth: number, canvasHeight: number, showHintAnim = false) => {
+    const centerX = canvasWidth / 2
+    const centerY = canvasHeight / 2
+    const fitSize = Math.min(canvasWidth, canvasHeight)
+    const scale = fitSize / (ARENA_RADIUS * 2 + ARENA_PADDING)
 
     ctx.fillStyle = '#0d1117'
-    ctx.fillRect(0, 0, canvasSize, canvasSize)
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight)
 
     ctx.save()
-    ctx.translate(center, center)
+    ctx.translate(centerX, centerY)
     ctx.scale(scale, scale)
 
     renderArena(ctx)
@@ -737,6 +751,9 @@ export const useBaybladeGame = () => {
       renderDragIndicator(ctx, selectedBlade.value)
     }
 
+    // Hint animation
+    renderHintAnimation(ctx, showHintAnim)
+
     ctx.restore()
   }
 
@@ -744,6 +761,16 @@ export const useBaybladeGame = () => {
     ctx.fillStyle = '#161b22'
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Outer glow halo — soft radial gradient so the neon doesn't clip at canvas edge
+    const glowGrad = ctx.createRadialGradient(0, 0, ARENA_RADIUS - 2, 0, 0, ARENA_RADIUS + 40)
+    glowGrad.addColorStop(0, 'rgba(79, 223, 255, 0.15)')
+    glowGrad.addColorStop(0.4, 'rgba(79, 223, 255, 0.05)')
+    glowGrad.addColorStop(1, 'rgba(79, 223, 255, 0)')
+    ctx.fillStyle = glowGrad
+    ctx.beginPath()
+    ctx.arc(0, 0, ARENA_RADIUS + 40, 0, Math.PI * 2)
     ctx.fill()
 
     // Neon border — glows to hint at wall-boost mechanic
@@ -769,6 +796,8 @@ export const useBaybladeGame = () => {
 
   const renderMeteorShower = (ctx: CanvasRenderingContext2D) => {
     for (const p of meteorParticles.value) {
+      // Skip particles still waiting for their delay
+      if (p.life > p.maxLife) continue
       const alpha = (p.life / p.maxLife) * 0.8
       const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy)
       const tailLen = spd * 4
@@ -852,11 +881,12 @@ export const useBaybladeGame = () => {
     bladeRadius: number
   ) => {
     const hpPct = Math.max(0, Math.min(1, hp / maxHp))
-    const ringR = bladeRadius + 8
+    const ringR = bladeRadius * 0.45
+    const ringWidth = 2.5
 
     // Background ring
-    ctx.strokeStyle = '#222'
-    ctx.lineWidth = 4
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)'
+    ctx.lineWidth = ringWidth
     ctx.beginPath()
     ctx.arc(x, y, ringR, 0, Math.PI * 2)
     ctx.stroke()
@@ -864,7 +894,7 @@ export const useBaybladeGame = () => {
     // HP arc
     const hue = hpPct * 120
     ctx.strokeStyle = `hsl(${hue}, 90%, 50%)`
-    ctx.lineWidth = 4
+    ctx.lineWidth = ringWidth
     ctx.lineCap = 'round'
     const start = -Math.PI / 2
     const end = start + hpPct * Math.PI * 2
@@ -873,27 +903,16 @@ export const useBaybladeGame = () => {
     ctx.stroke()
     ctx.lineCap = 'butt'
 
-    // Heart icon
-    ctx.save()
-    ctx.translate(x, y - 4)
-    const hs = 3
-    ctx.fillStyle = '#ff4488'
-    ctx.beginPath()
-    ctx.moveTo(0, hs * 0.6)
-    ctx.bezierCurveTo(-hs, -hs * 0.2, -hs * 1.5, -hs * 1.2, 0, -hs * 0.4)
-    ctx.bezierCurveTo(hs * 1.5, -hs * 1.2, hs, -hs * 0.2, 0, hs * 0.6)
-    ctx.fill()
-    ctx.restore()
-
-    // HP number
+    // HP number (inside the ring)
     ctx.fillStyle = '#ffffff'
-    ctx.font = 'bold 9px Arial'
+    ctx.font = 'bold 7px Arial'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.strokeStyle = '#000000'
-    ctx.lineWidth = 2.5
-    ctx.strokeText(Math.ceil(hp).toString(), x, y + 5)
-    ctx.fillText(Math.ceil(hp).toString(), x, y + 5)
+    ctx.lineWidth = 2
+    const hpText = Math.ceil(hp).toString()
+    ctx.strokeText(hpText, x, y)
+    ctx.fillText(hpText, x, y)
   }
 
   const renderSelectionGlow = (ctx: CanvasRenderingContext2D, blade: BaybladeState) => {
@@ -974,13 +993,15 @@ export const useBaybladeGame = () => {
     ctx.lineTo(endX, endY)
     ctx.stroke()
 
-    // Arrowhead
+    // Arrowhead (tip extends past line end)
     const headSize = 8
     const angle = Math.atan2(ny, nx)
+    const tipX = endX + nx * headSize
+    const tipY = endY + ny * headSize
     ctx.beginPath()
-    ctx.moveTo(endX, endY)
-    ctx.lineTo(endX - Math.cos(angle - 0.4) * headSize, endY - Math.sin(angle - 0.4) * headSize)
-    ctx.lineTo(endX - Math.cos(angle + 0.4) * headSize, endY - Math.sin(angle + 0.4) * headSize)
+    ctx.moveTo(tipX, tipY)
+    ctx.lineTo(tipX - Math.cos(angle - 0.4) * headSize, tipY - Math.sin(angle - 0.4) * headSize)
+    ctx.lineTo(tipX - Math.cos(angle + 0.4) * headSize, tipY - Math.sin(angle + 0.4) * headSize)
     ctx.closePath()
     ctx.fill()
 
@@ -990,14 +1011,108 @@ export const useBaybladeGame = () => {
   // ─── Coordinate Conversion ───────────────────────────────────────────────
 
   const pixelToGame = (
-    px: number, py: number, canvasSize: number
+    px: number, py: number, canvasWidth: number, canvasHeight: number
   ): { x: number; y: number } => {
-    const center = canvasSize / 2
-    const scale = canvasSize / (ARENA_RADIUS * 2 + ARENA_PADDING)
+    const centerX = canvasWidth / 2
+    const centerY = canvasHeight / 2
+    const fitSize = Math.min(canvasWidth, canvasHeight)
+    const scale = fitSize / (ARENA_RADIUS * 2 + ARENA_PADDING)
     return {
-      x: (px - center) / scale,
-      y: (py - center) / scale
+      x: (px - centerX) / scale,
+      y: (py - centerY) / scale
     }
+  }
+
+  // ─── Hint Animation ─────────────────────────────────────────────────────
+
+  const renderHintAnimation = (ctx: CanvasRenderingContext2D, showHint: boolean) => {
+    if (!showHint || phase.value !== 'player_turn' || isDragging.value) return
+
+    const blade = livingBlades(playerBlades.value)[0]
+    if (!blade) return
+
+    // Looping animation: 0→1 pull back, then hold, then release flash
+    const cycleDuration = 2000 // ms
+    const t = (Date.now() % cycleDuration) / cycleDuration
+
+    // Phase 0–0.5: pull back, 0.5–0.8: hold, 0.8–1.0: release fade
+    const pullDir = Math.PI * 0.75 // pull down-left
+    let pullDist: number
+    let alpha: number
+    let showArrow = true
+
+    if (t < 0.5) {
+      // Pull back phase
+      pullDist = (t / 0.5) * 60
+      alpha = 0.5
+    } else if (t < 0.8) {
+      // Hold phase
+      pullDist = 60
+      alpha = 0.5 + 0.2 * Math.sin((t - 0.5) / 0.3 * Math.PI)
+    } else {
+      // Release fade
+      pullDist = 60 * (1 - (t - 0.8) / 0.2)
+      alpha = 0.5 * (1 - (t - 0.8) / 0.2)
+      if (alpha < 0.05) showArrow = false
+    }
+
+    if (!showArrow) return
+
+    const pullX = blade.x + Math.cos(pullDir) * pullDist
+    const pullY = blade.y + Math.sin(pullDir) * pullDist
+
+    // Launch direction (opposite of pull)
+    const launchNx = -Math.cos(pullDir)
+    const launchNy = -Math.sin(pullDir)
+    const ratio = pullDist / 60
+    const arrowLen = 30 + 50 * ratio
+
+    ctx.save()
+    ctx.globalAlpha = alpha
+
+    // Pull line (dashed)
+    ctx.strokeStyle = 'rgba(255,170,0,0.7)'
+    ctx.lineWidth = 2
+    ctx.setLineDash([6, 4])
+    ctx.beginPath()
+    ctx.moveTo(blade.x, blade.y)
+    ctx.lineTo(pullX, pullY)
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    // Phantom finger circle at pull point
+    ctx.fillStyle = 'rgba(255,255,255,0.25)'
+    ctx.beginPath()
+    ctx.arc(pullX, pullY, 8, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Launch arrow
+    const endX = blade.x + launchNx * arrowLen
+    const endY = blade.y + launchNy * arrowLen
+
+    const r = Math.floor(255 * ratio)
+    const g = Math.floor(255 * (1 - ratio * 0.6))
+    ctx.strokeStyle = `rgb(${r}, ${g}, 0)`
+    ctx.fillStyle = `rgb(${r}, ${g}, 0)`
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(blade.x, blade.y)
+    ctx.lineTo(endX, endY)
+    ctx.stroke()
+
+    // Arrowhead (tip extends past line end)
+    const headSize = 8
+    const angle = Math.atan2(launchNy, launchNx)
+    const tipX = endX + launchNx * headSize
+    const tipY = endY + launchNy * headSize
+    ctx.beginPath()
+    ctx.moveTo(tipX, tipY)
+    ctx.lineTo(tipX - Math.cos(angle - 0.4) * headSize, tipY - Math.sin(angle - 0.4) * headSize)
+    ctx.lineTo(tipX - Math.cos(angle + 0.4) * headSize, tipY - Math.sin(angle + 0.4) * headSize)
+    ctx.closePath()
+    ctx.fill()
+
+    ctx.restore()
   }
 
   // ─── Public API ──────────────────────────────────────────────────────────

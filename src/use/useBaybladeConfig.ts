@@ -25,7 +25,7 @@ export const TOP_PARTS: Record<TopPartId, TopPart> = {
     label: 'Tri Edge',
     damageMultiplier: 1.4,
     defenseMultiplier: 0.9,
-    healthBonus: 50,
+    healthBonus: 5,
     shape: 'triangle'
   },
   round: {
@@ -33,7 +33,7 @@ export const TOP_PARTS: Record<TopPartId, TopPart> = {
     label: 'Round Guard',
     damageMultiplier: 0.8,
     defenseMultiplier: 1.5,
-    healthBonus: 150,
+    healthBonus: 15,
     shape: 'circle'
   },
   quadratic: {
@@ -41,7 +41,7 @@ export const TOP_PARTS: Record<TopPartId, TopPart> = {
     label: 'Quad Core',
     damageMultiplier: 1.0,
     defenseMultiplier: 1.0,
-    healthBonus: 100,
+    healthBonus: 10,
     shape: 'square'
   },
   cushioned: {
@@ -49,7 +49,7 @@ export const TOP_PARTS: Record<TopPartId, TopPart> = {
     label: 'Soft Shell',
     damageMultiplier: 0.6,
     defenseMultiplier: 1.8,
-    healthBonus: 200,
+    healthBonus: 20,
     shape: 'cushion'
   }
 }
@@ -68,7 +68,7 @@ export const BOTTOM_PARTS: Record<BottomPartId, BottomPart> = {
     label: 'Tanky',
     speedMultiplier: 0.7,
     forceDecay: 0.994,
-    healthBonus: 200,
+    healthBonus: 20,
     weight: 150
   },
   balanced: {
@@ -76,7 +76,7 @@ export const BOTTOM_PARTS: Record<BottomPartId, BottomPart> = {
     label: 'Balanced',
     speedMultiplier: 1.0,
     forceDecay: 0.996,
-    healthBonus: 100,
+    healthBonus: 10,
     weight: 110
   }
 }
@@ -86,7 +86,7 @@ export const BOTTOM_PARTS_LIST = Object.values(BOTTOM_PARTS)
 
 // ─── Stats Computation ───────────────────────────────────────────────────────
 
-const BASE_HP = 500
+const BASE_HP = 50
 
 export const computeStats = (config: BaybladeConfig): BaybladeStats => {
   const top = TOP_PARTS[config.topPartId]

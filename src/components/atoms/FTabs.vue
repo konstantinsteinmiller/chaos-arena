@@ -20,7 +20,7 @@ const selectTab = (value: string | number) => {
 
 <template lang="pug">
   div(class="flex items-end justify-center gap-0 px-4")
-    button(
+    button.cursor-pointer(
       v-for="tab in options"
       :key="tab.value"
       @click="selectTab(tab.value)"

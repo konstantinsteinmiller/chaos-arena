@@ -21,19 +21,19 @@ WIP: [playable demo](https://konstantinsteinmiller.github.io/chaos-arena/)
     - [x] mute music and sound
     -
 - [ ] basic gameplay
-    - [ ]
+    - [x] basic attack on collision
+    - [x] show sparks on collision
+    - [x] life bar and counter
+    - [x] bounce off arena boundaries
+    - [x] add icons for team composition modal
+    - [x] fix bounce bug after kill
+    - [x] start hint timer with placeholder arrow for pull back cta.
 
 - [ ] Reward system
     - [ ] wheel spinner for 2x, 3x, 4x and 5x rewards after rewarded videos
 
 - [ ] Npc logic
     - [ ]
-
-- [ ] GameOverModal
-    - [ ] show winner / loser / draw
-    - [ ] restart game button
-    - [ ] continue Campaign
-
 
 - [ ] Campaign
     - [ ] 
