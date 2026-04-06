@@ -44,18 +44,13 @@ const bladeTabs = computed<TabOption[]>(() =>
 
 const localTeam: Ref<BaybladeConfig[]> = ref([])
 
-// Sync when modal opens / props change
-watch(() => props.initialTeam, (team) => {
-  localTeam.value = team.map(c => ({ ...c }))
-  activeBladeIndex.value = 0
-}, { immediate: true })
-
+// Sync only when modal opens (not on every prop change, which would reset the tab)
 watch(() => props.modelValue, (open) => {
   if (open) {
     localTeam.value = props.initialTeam.map(c => ({ ...c }))
     activeBladeIndex.value = 0
   }
-})
+}, { immediate: true })
 
 // ─── Current Blade Being Edited ────────────────────────────────────────────
 

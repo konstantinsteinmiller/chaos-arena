@@ -46,6 +46,7 @@ export interface BaybladeConfig {
   topLevel?: number
   bottomLevel?: number
   modelId?: string
+  isBoss?: boolean
 }
 
 export interface BaybladeStats {
@@ -80,6 +81,7 @@ export interface BaybladeState {
   wallBounceCount: number
   config: BaybladeConfig
   owner: 'player' | 'npc'
+  isBoss: boolean
 }
 
 // ─── Meteor Shower Particle ──────────────────────────────────────────────────

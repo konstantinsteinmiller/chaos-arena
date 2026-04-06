@@ -105,7 +105,7 @@ const useCheats = () => {
     'ctrl+shift+7': () => setBaybladeStage(7),
     'ctrl+shift+8': () => setBaybladeStage(8),
     'ctrl+shift+9': () => setBaybladeStage(9),
-    'ctrl+shift+0': () => setBaybladeStage(10),
+    'ctrl+shift+p': () => setBaybladeStage(10),
     'ctrl+shift+alt+1': () => setBaybladeStage(11),
     'ctrl+shift+alt+2': () => setBaybladeStage(12),
     'ctrl+shift+alt+3': () => setBaybladeStage(13),

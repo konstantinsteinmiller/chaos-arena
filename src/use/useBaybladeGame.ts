@@ -98,6 +98,7 @@ export const useBaybladeGame = () => {
   const phase: Ref<GamePhase> = ref('idle')
   const gameResult: Ref<GameResult> = ref(null)
   const turnAnnouncement: Ref<string> = ref('')
+  const isBossStage: Ref<boolean> = ref(false)
 
   // ── Blade Arrays (2 per side) ────────────────────────────────────────────
   const playerBlades: Ref<BaybladeState[]> = ref([])
@@ -299,24 +300,28 @@ export const useBaybladeGame = () => {
   function createBladeState(
     owner: 'player' | 'npc',
     x: number, y: number,
-    config: BaybladeConfig
+    config: BaybladeConfig,
+    isBoss = false
   ): BaybladeState {
     const stats = computeStats(config, config.topLevel ?? 0, config.bottomLevel ?? 0)
+    const bossHpMultiplier = isBoss ? 3 : 1
+    const bossRadius = isBoss ? BLADE_RADIUS * 1.6 : BLADE_RADIUS
     return {
       id: nextBladeId++,
       x, y,
       vx: 0, vy: 0,
       ax: 0, ay: 0,
       accelFramesLeft: 0,
-      radius: BLADE_RADIUS,
-      hp: stats.maxHp,
-      maxHp: stats.maxHp,
+      radius: bossRadius,
+      hp: stats.maxHp * bossHpMultiplier,
+      maxHp: stats.maxHp * bossHpMultiplier,
       rotation: 0,
-      rotationSpeed: 0.05,
+      rotationSpeed: isBoss ? 0.03 : 0.05,
       hitFlash: 0,
       wallBounceCount: 0,
       config,
-      owner
+      owner,
+      isBoss
     }
   }
 
@@ -392,8 +397,10 @@ export const useBaybladeGame = () => {
     }
 
     npcBlades.value = nTeam.map((cfg, i) =>
-      createBladeState('npc', npcPositions[i]!.x, npcPositions[i]!.y, cfg)
+      createBladeState('npc', npcPositions[i]!.x, npcPositions[i]!.y, cfg, cfg.isBoss)
     )
+
+    isBossStage.value = nTeam.some(cfg => cfg.isBoss)
 
     isDragging.value = false
     selectedBladeId.value = null
@@ -1085,33 +1092,57 @@ export const useBaybladeGame = () => {
   }
 
   const renderArena = (ctx: CanvasRenderingContext2D) => {
-    ctx.fillStyle = '#161b22'
+    const boss = isBossStage.value
+    const neonColor = boss ? '#ff4444' : '#4fdfff'
+    const neonRgba = boss ? 'rgba(255, 60, 40,' : 'rgba(79, 223, 255,'
+
+    // Arena floor
+    if (boss) {
+      const floorGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, ARENA_RADIUS)
+      floorGrad.addColorStop(0, '#2a1010')
+      floorGrad.addColorStop(1, '#1a0808')
+      ctx.fillStyle = floorGrad
+    } else {
+      ctx.fillStyle = '#161b22'
+    }
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2)
     ctx.fill()
 
-    // Outer glow halo — soft radial gradient so the neon doesn't clip at canvas edge
+    // Boss: pulsating inner glow
+    if (boss) {
+      const pulse = 0.3 + 0.2 * Math.sin(performance.now() * 0.002)
+      const innerGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, ARENA_RADIUS * 0.7)
+      innerGlow.addColorStop(0, `rgba(255, 40, 20, ${pulse * 0.15})`)
+      innerGlow.addColorStop(1, 'rgba(255, 40, 20, 0)')
+      ctx.fillStyle = innerGlow
+      ctx.beginPath()
+      ctx.arc(0, 0, ARENA_RADIUS * 0.7, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // Outer glow halo
     const glowGrad = ctx.createRadialGradient(0, 0, ARENA_RADIUS - 2, 0, 0, ARENA_RADIUS + 40)
-    glowGrad.addColorStop(0, 'rgba(79, 223, 255, 0.15)')
-    glowGrad.addColorStop(0.4, 'rgba(79, 223, 255, 0.05)')
-    glowGrad.addColorStop(1, 'rgba(79, 223, 255, 0)')
+    glowGrad.addColorStop(0, `${neonRgba} 0.15)`)
+    glowGrad.addColorStop(0.4, `${neonRgba} 0.05)`)
+    glowGrad.addColorStop(1, `${neonRgba} 0)`)
     ctx.fillStyle = glowGrad
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS + 40, 0, Math.PI * 2)
     ctx.fill()
 
-    // Neon border — glows to hint at wall-boost mechanic
-    ctx.strokeStyle = '#4fdfff'
-    ctx.lineWidth = 4
-    ctx.shadowColor = '#4fdfff'
-    ctx.shadowBlur = 20
+    // Neon border
+    ctx.strokeStyle = neonColor
+    ctx.lineWidth = boss ? 5 : 4
+    ctx.shadowColor = neonColor
+    ctx.shadowBlur = boss ? 30 : 20
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2)
     ctx.stroke()
     ctx.shadowBlur = 0
 
     // Inner rings
-    ctx.strokeStyle = '#1c2a3d'
+    ctx.strokeStyle = boss ? '#3a1515' : '#1c2a3d'
     ctx.lineWidth = 1
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS * 0.6, 0, Math.PI * 2)
@@ -1152,6 +1183,26 @@ export const useBaybladeGame = () => {
 
   const renderAura = (ctx: CanvasRenderingContext2D, blade: BaybladeState) => {
     const isPlayer = blade.owner === 'player'
+
+    if (blade.isBoss) {
+      // Boss: large fiery pulsating aura
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.003)
+      const auraRadius = blade.radius * 2.2
+      const grad = ctx.createRadialGradient(
+        blade.x, blade.y, blade.radius * 0.4,
+        blade.x, blade.y, auraRadius
+      )
+      grad.addColorStop(0, `rgba(255, 80, 20, ${0.8 * pulse})`)
+      grad.addColorStop(0.3, `rgba(255, 40, 10, ${0.5 * pulse})`)
+      grad.addColorStop(0.6, `rgba(180, 20, 5, ${0.3 * pulse})`)
+      grad.addColorStop(1, 'rgba(120, 10, 0, 0)')
+      ctx.fillStyle = grad
+      ctx.beginPath()
+      ctx.arc(blade.x, blade.y, auraRadius, 0, Math.PI * 2)
+      ctx.fill()
+      return
+    }
+
     // Player aura pulsates, NPC aura is steady
     const pulse = isPlayer
       ? 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(performance.now() * 0.004))
@@ -1482,6 +1533,7 @@ export const useBaybladeGame = () => {
     dragCurrent,
     dragForceRatio,
     meteorParticles,
+    isBossStage,
 
     initGame,
     startMatch,

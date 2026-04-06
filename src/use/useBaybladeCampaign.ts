@@ -10,11 +10,13 @@ export interface StageBladeConfig {
   topLevel: number
   bottomLevel: number
   modelId?: string
+  isBoss?: boolean
 }
 
 export interface Stage {
   id: number
   name: string
+  isBoss?: boolean
   enemyTeam: StageBladeConfig[]
   rewardWin: number
   rewardLose: number
@@ -58,14 +60,11 @@ export const STAGES: Stage[] = [
     rewardWin: 110, rewardLose: 35
   },
   {
-    id: 5, name: 'Gold Division',
+    id: 5, name: 'The Iron Titan', isBoss: true,
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 1, bottomLevel: 1, modelId: 'fire' },
-      { topPartId: 'triangle', bottomPartId: 'tanky', topLevel: 1, bottomLevel: 1, modelId: 'thunder' },
-      { topPartId: 'round', bottomPartId: 'balanced', topLevel: 1, bottomLevel: 0, modelId: 'ice' },
-      { topPartId: 'cushioned', bottomPartId: 'speedy', topLevel: 0, bottomLevel: 1, modelId: 'wulf' }
+      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 3, modelId: 'castle', isBoss: true }
     ],
-    rewardWin: 130, rewardLose: 40
+    rewardWin: 200, rewardLose: 50
   },
 
   // ── Mid Game (6-10): enemies start upgrading ──────────────────────────────
@@ -104,14 +103,11 @@ export const STAGES: Stage[] = [
     rewardWin: 200, rewardLose: 60
   },
   {
-    id: 10, name: 'Warlord\'s Keep',
+    id: 10, name: 'The Storm Warlord', isBoss: true,
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 3, modelId: 'scorpion' },
-      { topPartId: 'star', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 4, modelId: 'thunderstorm' },
-      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 3, bottomLevel: 2, modelId: 'snake' },
-      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 2, bottomLevel: 3, modelId: 'prisma' }
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 5, bottomLevel: 5, modelId: 'thunderstorm', isBoss: true }
     ],
-    rewardWin: 250, rewardLose: 70
+    rewardWin: 350, rewardLose: 90
   },
 
   // ── Late Game (11-15): tougher combos ─────────────────────────────────────
@@ -150,14 +146,11 @@ export const STAGES: Stage[] = [
     rewardWin: 230, rewardLose: 70
   },
   {
-    id: 15, name: 'Serpent\'s Nest',
+    id: 15, name: 'The Venom King', isBoss: true,
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 5, bottomLevel: 4, modelId: 'snake' },
-      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 4, modelId: 'scorpion' },
-      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 4, bottomLevel: 4, modelId: 'prisma' },
-      { topPartId: 'cushioned', bottomPartId: 'balanced', topLevel: 3, bottomLevel: 3, modelId: 'wulf' }
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 6, bottomLevel: 6, modelId: 'snake', isBoss: true }
     ],
-    rewardWin: 280, rewardLose: 80
+    rewardWin: 400, rewardLose: 100
   },
 
   // ── End Game (16-20): high upgrades ───────────────────────────────────────
@@ -196,14 +189,11 @@ export const STAGES: Stage[] = [
     rewardWin: 280, rewardLose: 85
   },
   {
-    id: 20, name: 'Dragon\'s Throne',
+    id: 20, name: 'The Dragon Lord', isBoss: true,
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 6, bottomLevel: 6, modelId: 'scorpion' },
-      { topPartId: 'star', bottomPartId: 'tanky', topLevel: 5, bottomLevel: 6, modelId: 'fire' },
-      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 6, bottomLevel: 5, modelId: 'snake' },
-      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 5, bottomLevel: 6, modelId: 'castle' }
+      { topPartId: 'star', bottomPartId: 'tanky', topLevel: 7, bottomLevel: 7, modelId: 'bluedragon', isBoss: true }
     ],
-    rewardWin: 350, rewardLose: 100
+    rewardWin: 500, rewardLose: 120
   },
 
   // ── Master Tier (21-25): punishing encounters ─────────────────────────────
@@ -242,14 +232,11 @@ export const STAGES: Stage[] = [
     rewardWin: 340, rewardLose: 100
   },
   {
-    id: 25, name: 'Apocalypse Ring',
+    id: 25, name: 'The Phoenix Emperor', isBoss: true,
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 8, bottomLevel: 7, modelId: 'scorpion' },
-      { topPartId: 'star', bottomPartId: 'tanky', topLevel: 7, bottomLevel: 8, modelId: 'thunderstorm' },
-      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 7, bottomLevel: 7, modelId: 'bluedragon' },
-      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 7, bottomLevel: 7, modelId: 'castle' }
+      { topPartId: 'star', bottomPartId: 'balanced', topLevel: 9, bottomLevel: 9, modelId: 'phoenix', isBoss: true }
     ],
-    rewardWin: 400, rewardLose: 110
+    rewardWin: 600, rewardLose: 140
   },
 
   // ── Legendary Tier (26-30): ultimate challenges ───────────────────────────
@@ -288,14 +275,11 @@ export const STAGES: Stage[] = [
     rewardWin: 420, rewardLose: 120
   },
   {
-    id: 30, name: 'Final Chaos',
+    id: 30, name: 'Chaos Incarnate', isBoss: true,
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 10, bottomLevel: 9, modelId: 'fire' },
-      { topPartId: 'star', bottomPartId: 'tanky', topLevel: 9, bottomLevel: 10, modelId: 'thunderstorm' },
-      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 10, bottomLevel: 9, modelId: 'scorpion' },
-      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 9, bottomLevel: 10, modelId: 'castle' }
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 12, bottomLevel: 12, modelId: 'fire', isBoss: true }
     ],
-    rewardWin: 500, rewardLose: 150
+    rewardWin: 800, rewardLose: 200
   }
 ]
 

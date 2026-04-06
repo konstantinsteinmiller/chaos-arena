@@ -63,7 +63,8 @@ const stageNpcTeam = (): BaybladeConfig[] =>
     bottomPartId: e.bottomPartId,
     topLevel: e.topLevel,
     bottomLevel: e.bottomLevel,
-    modelId: e.modelId
+    modelId: e.modelId,
+    isBoss: e.isBoss
   }))
 
 /** Player team with current upgrade levels applied */
@@ -255,10 +256,17 @@ onUnmounted(() => {
       div.flex.justify-between.items-start.p-3(class="sm:p-4")
         //- Stage indicator
         div.flex.items-center.gap-2.rounded-lg.text-white.font-bold(
-          class="px-3 py-1.5 bg-slate-700/80 text-xs sm:text-sm"
+          :class="[\
+            'px-3 py-1.5 text-xs sm:text-sm',\
+            currentStage.isBoss ? 'bg-red-900/90 border border-red-500/50' : 'bg-slate-700/80'\
+          ]"
         )
-          span.game-text Stage {{ currentStageId }}
-          span.text-slate-400.game-text(class="text-[10px] sm:text-xs") {{ currentStage.name }}
+          span.game-text(
+            :class="currentStage.isBoss ? 'text-red-300' : ''"
+          ) {{ currentStage.isBoss ? 'BOSS' : 'Stage' }} {{ currentStageId }}
+          span.game-text(
+            :class="currentStage.isBoss ? 'text-red-400 text-[10px] sm:text-xs' : 'text-slate-400 text-[10px] sm:text-xs'"
+          ) {{ currentStage.name }}
         //- Coin counter
         div.flex.items-center.gap-2.rounded-lg.text-white.font-bold(
           class="px-3 py-1.5 bg-yellow-600/80 text-sm sm:text-base"
