@@ -6,6 +6,7 @@ import FIconButton from '@/components/atoms/FIconButton'
 import FReward from '@/components/atoms/FReward'
 import BaybladeConfigModal from '@/components/organisms/BaybladeConfigModal'
 import OptionsModal from '@/components/organisms/OptionsModal'
+import useSounds from '@/use/useSound'
 import useBaybladeGame, { BLADE_RADIUS } from '@/use/useBaybladeGame'
 import useBaybladeConfig from '@/use/useBaybladeConfig'
 import useBaybladeCampaign from '@/use/useBaybladeCampaign'
@@ -39,6 +40,7 @@ const { currentStage, currentStageId, isLastStage, playerUpgrades, advanceStage 
 const { showHint, startHintTimer, clearHint } = useHint(5000)
 const { shakeStyle } = useScreenshake()
 const { t } = useI18n()
+const { playSound } = useSounds()
 
 const { setSettingValue } = useUser()
 
@@ -175,6 +177,7 @@ const onPointerLeave = () => {
 
 watch(isGameOver, (over) => {
   if (over && !coinsAwarded.value) {
+    playSound(gameResult.value === 'win' ? 'win' : 'lose')
     addCoins(rewardAmount.value)
     if (gameResult.value === 'win') advanceStage()
     coinsAwarded.value = true

@@ -14,21 +14,11 @@ const resourceCache = {
 
 const STATIC_IMAGES = [
   'images/logo/logo_256x256.webp',
-  'images/bg/campaign-map_800x710.webp',
-  'images/bg/campaign-map_800x1600.webp',
-  'images/bg/campaign-map_1600x800.webp',
-  'images/bg/oak_600x588.webp',
   'images/icons/difficulty-icon_128x128.webp',
   'images/icons/settings-icon_128x128.webp',
   'images/icons/sound-icon_128x128.webp',
   'images/icons/team_128x128.webp',
   'images/icons/gears_128x128.webp'
-]
-
-const BG_IMAGE = [
-  '/images/bg/bg_1024x1024.webp',
-  'images/bg/bg_1024x1024.webp',
-  './images/bg/bg_1024x1024.webp'
 ]
 
 const SOUND_ASSETS = [
@@ -43,11 +33,9 @@ const SOUND_ASSETS = [
 ]
 
 const MUSIC_ASSETS = [
-  'audio/music/battle.ogg',
   'audio/music/battle-1.ogg',
   'audio/music/battle-2.ogg',
   'audio/music/battle-3.ogg',
-  'audio/music/adventure_main-menu.mp3'
 ]
 
 export default () => {
@@ -57,7 +45,6 @@ export default () => {
     // Combine static list with the model images
     const baybladeModelImages = BAYBLADE_MODEL_IDS.map(id => modelImgPath(id))
     const allImages = [
-      ...BG_IMAGE,
       ...STATIC_IMAGES.map(src => prependBaseUrl(src)),
       ...baybladeModelImages
     ]

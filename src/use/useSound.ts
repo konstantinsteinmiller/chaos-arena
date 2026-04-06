@@ -46,13 +46,6 @@ export const useMusic = () => {
       }, { once: true })
     } else if (bgMusic.value && bgMusic.value?.dataset?.name === 'battle' && route.name !== 'battle') {
       bgMusic.value?.pause()
-      const filename = 'adventure_main-menu.mp3'
-      bgMusic.value.dataset.name = filename
-      bgMusic.value.src = prependBaseUrl('audio/music/' + filename)
-      bgMusic.value.addEventListener('canplaythrough', () => {
-        isLoaded.value = true
-        playWithFade()
-      }, { once: true })
     }
   }, { deep: true, immediate: true })
 
