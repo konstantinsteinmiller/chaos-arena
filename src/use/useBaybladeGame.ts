@@ -23,7 +23,7 @@ const { playSound } = useSounds()
 
 export const ARENA_RADIUS = 200
 const isDesktop = window.innerWidth > 600 && window.innerHeight > 600 && !isMobilePortrait.value && !isMobileLandscape.value
-export const BLADE_RADIUS = isDesktop ? 26 : 21
+export const BLADE_RADIUS = isDesktop ? 26 : 28
 const BASE_MAX_FORCE = 14
 const STOP_THRESHOLD = 0.25
 const DAMAGE_SCALE = isDebug.value ? 10 : 1
@@ -319,6 +319,7 @@ export const useBaybladeGame = () => {
       rotationSpeed: isBoss ? 0.03 : 0.05,
       hitFlash: 0,
       wallBounceCount: 0,
+      lastHitTime: 0,
       config,
       owner,
       isBoss
@@ -741,6 +742,7 @@ export const useBaybladeGame = () => {
         if (blade.accelFramesLeft === 0) {
           blade.ax = 0
           blade.ay = 0
+          blade.lastHitTime = performance.now()
         }
       }
 
@@ -760,6 +762,20 @@ export const useBaybladeGame = () => {
           const t = 1 - spdRatio / 0.25 // 0 at 25%, 1 at 0%
           decay = decay * (1 - t) + 0.95 * t
         }
+
+        // Exponential slowdown the longer a blade travels without hitting another blade
+        if (blade.lastHitTime > 0) {
+          const elapsed = performance.now() - blade.lastHitTime
+          // After ~1s no-hit, start applying extra drag that ramps up exponentially
+          const NO_HIT_GRACE_MS = 1000
+          if (elapsed > NO_HIT_GRACE_MS) {
+            const overTime = (elapsed - NO_HIT_GRACE_MS) / 1000 // seconds past grace
+            // Extra decay: 0.99^(overTime^1.5) — ramps gently then aggressively
+            const extraDecay = Math.pow(0.99, Math.pow(overTime, 1.5))
+            decay *= extraDecay
+          }
+        }
+
         blade.vx *= decay
         blade.vy *= decay
       }
@@ -890,6 +906,11 @@ export const useBaybladeGame = () => {
     const minDist = a.radius + b.radius
 
     if (dist >= minDist || dist < 0.01) return
+
+    // Reset no-hit timer on collision
+    const now_hit = performance.now()
+    a.lastHitTime = now_hit
+    b.lastHitTime = now_hit
 
     triggerShake('small')
 
