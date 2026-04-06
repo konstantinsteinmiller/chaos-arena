@@ -163,6 +163,48 @@ export const useBaybladeGame = () => {
     return img.complete ? img : null
   }
 
+  // ─── Trail System ────────────────────────────────────────────────────────
+
+  interface TrailPoint {
+    x: number;
+    y: number;
+    speed: number;
+    time: number
+  }
+
+  interface TrailData {
+    pts: TrailPoint[];
+    owner: 'player' | 'npc'
+  }
+
+  const TRAIL_DURATION = 700
+  const trails = new Map<number, TrailData>()
+
+  const updateTrails = (blades: BaybladeState[], now: number) => {
+    for (const blade of blades) {
+      if (blade.hp <= 0) {
+        trails.delete(blade.id)
+        continue
+      }
+      const spd = Math.sqrt(blade.vx * blade.vx + blade.vy * blade.vy)
+
+      let data = trails.get(blade.id)
+      if (!data) {
+        data = { pts: [], owner: blade.owner }
+        trails.set(blade.id, data)
+      }
+      const pts = data.pts
+
+      // Always record position to keep path continuous
+      pts.push({ x: blade.x, y: blade.y, speed: spd, time: now })
+
+      // Prune expired points
+      while (pts.length > 0 && now - pts[0]!.time > TRAIL_DURATION) {
+        pts.shift()
+      }
+    }
+  }
+
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
   let nextBladeId = 0
@@ -232,6 +274,7 @@ export const useBaybladeGame = () => {
     turnAnnouncement.value = ''
     meteorParticles.value = []
     meteorIntroTimer = 0
+    trails.clear()
     phase.value = 'tap_to_start'
   }
 
@@ -415,23 +458,48 @@ export const useBaybladeGame = () => {
 
   // ─── NPC AI ──────────────────────────────────────────────────────────────
 
+  const passToPlayer = () => {
+    phase.value = 'player_turn'
+    launchedBladeId.value = null
+    npcActiveBladeId.value = null
+    const first = livingBlades(playerBlades.value)[0]
+    if (first) selectedBladeId.value = first.id
+  }
+
   const launchNpc = () => {
     const living = livingBlades(npcBlades.value)
-    if (living.length === 0) return
+    if (living.length === 0) {
+      passToPlayer()
+      return
+    }
 
     // Pick a random living NPC blade
-    const blade = living[Math.floor(Math.random() * living.length)]
+    const blade = living[Math.floor(Math.random() * living.length)]!
     npcActiveBladeId.value = blade.id
 
     // Pick a random living player target
     const targets = livingBlades(playerBlades.value)
     if (targets.length === 0) return
-    const target = targets[Math.floor(Math.random() * targets.length)]
+    const target = targets[Math.floor(Math.random() * targets.length)]!
 
     const dx = target.x - blade.x
     const dy = target.y - blade.y
     const dist = Math.sqrt(dx * dx + dy * dy)
-    if (dist < 0.01) return
+    if (dist < 0.01) {
+      // Overlapping — aim in a random direction instead
+      const randAngle = Math.random() * Math.PI * 2
+      const stats = statsFor(blade)
+      const maxForce = BASE_MAX_FORCE * stats.speedMultiplier
+      blade.vx = 0
+      blade.vy = 0
+      blade.ax = (Math.cos(randAngle) * maxForce * 0.5) / ACCEL_FRAMES
+      blade.ay = (Math.sin(randAngle) * maxForce * 0.5) / ACCEL_FRAMES
+      blade.accelFramesLeft = ACCEL_FRAMES
+      blade.wallBounceCount = 0
+      launchedBladeId.value = blade.id
+      phase.value = 'npc_launched'
+      return
+    }
 
     // Aim toward target with ±15° spread
     let angle = Math.atan2(dy, dx)
@@ -526,8 +594,10 @@ export const useBaybladeGame = () => {
         blade.vy = 0
       }
 
-      // Spin proportional to speed
-      blade.rotation += blade.rotationSpeed + spd * 0.02
+      // Spin proportional to speed, scaled by HP (100% at full → 40% at 5% HP)
+      const hpPct = Math.max(0.05, blade.hp / blade.maxHp)
+      const hpSpinScale = 0.4 + 0.6 * hpPct
+      blade.rotation += (blade.rotationSpeed + spd * 0.02) * hpSpinScale
 
       // Hit flash decay
       if (blade.hitFlash > 0) blade.hitFlash--
@@ -535,6 +605,9 @@ export const useBaybladeGame = () => {
       // Wall collision with BOOST
       bounceOffWalls(blade)
     }
+
+    // Record trail points
+    updateTrails(all, performance.now())
 
     // All-pairs collision (including friendly fire!)
     for (let i = 0; i < all.length; i++) {
@@ -566,9 +639,10 @@ export const useBaybladeGame = () => {
 
     if (gameResult.value) return
 
-    // Turn transitions — launched blade must come to rest
+    // Turn transitions — launched blade must come to rest (or be dead)
     const launched = all.find(b => b.id === launchedBladeId.value)
     const launchedStopped = !launched
+      || launched.hp <= 0
       || (speed(launched) < STOP_THRESHOLD && launched.accelFramesLeft === 0)
 
     if (phase.value === 'player_launched' && launchedStopped) {
@@ -729,6 +803,13 @@ export const useBaybladeGame = () => {
 
     renderArena(ctx)
     renderMeteorShower(ctx)
+    renderTrails(ctx)
+
+    // Auras (rendered under blades)
+    for (const blade of allBlades.value) {
+      if (blade.hp <= 0) continue
+      renderAura(ctx, blade)
+    }
 
     // Render all models
     for (const blade of allBlades.value) {
@@ -755,6 +836,61 @@ export const useBaybladeGame = () => {
     renderHintAnimation(ctx, showHintAnim)
 
     ctx.restore()
+  }
+
+  // Trail layers: outer glow, mid body, inner core
+  const TRAIL_LAYERS = [
+    { widthBase: 6, widthSpeed: 4, alphaScale: 0.15 }, // outer glow
+    { widthBase: 3, widthSpeed: 3, alphaScale: 0.35 }, // mid body
+    { widthBase: 1, widthSpeed: 1.5, alphaScale: 0.7 }  // inner core
+  ]
+
+  const renderTrails = (ctx: CanvasRenderingContext2D) => {
+    const now = performance.now()
+
+    // Team colors: player = blue, npc = red
+    const TEAM_COLOR = { player: [80, 160, 255], npc: [255, 80, 80] } as const
+
+    for (const [, data] of trails) {
+      const { pts, owner } = data
+      if (pts.length < 2) continue
+
+      const oldestTime = pts[0]!.time
+      const newestTime = pts[pts.length - 1]!.time
+      const timeSpan = newestTime - oldestTime
+      const [tr, tg, tb] = TEAM_COLOR[owner]
+
+      for (const layer of TRAIL_LAYERS) {
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        ctx.lineWidth = layer.widthBase + layer.widthSpeed
+
+        for (let i = 1; i < pts.length; i++) {
+          const p0 = pts[i - 1]!
+          const p1 = pts[i]!
+
+          // t: 0 = oldest point, 1 = newest (closest to blade)
+          const t = timeSpan > 0 ? (p1.time - oldestTime) / timeSpan : 1
+          // Fade out old points by age
+          const age = now - p1.time
+          const ageFade = Math.max(0, 1 - age / TRAIL_DURATION)
+
+          const alpha = ageFade * layer.alphaScale
+          if (alpha <= 0.01) continue
+
+          // Interpolate white(t=0) → team color(t=1)
+          const r = Math.round(255 + (tr - 255) * t)
+          const g = Math.round(255 + (tg - 255) * t)
+          const b = Math.round(255 + (tb - 255) * t)
+
+          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`
+          ctx.beginPath()
+          ctx.moveTo(p0.x, p0.y)
+          ctx.lineTo(p1.x, p1.y)
+          ctx.stroke()
+        }
+      }
+    }
   }
 
   const renderArena = (ctx: CanvasRenderingContext2D) => {
@@ -821,6 +957,32 @@ export const useBaybladeGame = () => {
       ctx.fill()
     }
     ctx.lineCap = 'butt'
+  }
+
+  const renderAura = (ctx: CanvasRenderingContext2D, blade: BaybladeState) => {
+    const isPlayer = blade.owner === 'player'
+    // Player aura pulsates, NPC aura is steady
+    const pulse = isPlayer
+      ? 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(performance.now() * 0.004))
+      : 0.5
+    const auraRadius = blade.radius * 1.8
+    const grad = ctx.createRadialGradient(
+      blade.x, blade.y, blade.radius * 0.3,
+      blade.x, blade.y, auraRadius
+    )
+    if (isPlayer) {
+      grad.addColorStop(0, `rgba(60, 140, 255, ${0.5 * pulse})`)
+      grad.addColorStop(0.5, `rgba(40, 100, 220, ${0.25 * pulse})`)
+      grad.addColorStop(1, 'rgba(30, 80, 200, 0)')
+    } else {
+      grad.addColorStop(0, `rgba(255, 60, 60, ${0.7 * pulse})`)
+      grad.addColorStop(0.5, `rgba(220, 40, 40, ${0.4 * pulse})`)
+      grad.addColorStop(1, 'rgba(200, 30, 30, 0)')
+    }
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.arc(blade.x, blade.y, auraRadius, 0, Math.PI * 2)
+    ctx.fill()
   }
 
   const renderBlade = (ctx: CanvasRenderingContext2D, blade: BaybladeState) => {

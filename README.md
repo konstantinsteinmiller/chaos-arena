@@ -1,6 +1,6 @@
 # Chaos Arena
 
-Chaos Arena is launchable blade game in a 2d arena, with emphasis on action based gameplay.
+Chaos Arena is a launchable blade spinner game in a 2d arena, with emphasis on action based gameplay.
 
 It features a github pages deployed CI cd pipeline and a windows build + demo build.
 
