@@ -9,6 +9,7 @@ import useBaybladeGame, { BLADE_RADIUS } from '@/use/useBaybladeGame'
 import useBaybladeConfig from '@/use/useBaybladeConfig'
 import useBaybladeCampaign from '@/use/useBaybladeCampaign'
 import { useHint } from '@/use/useHint'
+import { useScreenshake } from '@/use/useScreenshake'
 import type { BaybladeConfig } from '@/types/bayblade'
 
 // ─── Game & Config ─────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ const {
 const { playerTeam, coins, saveTeam, addCoins } = useBaybladeConfig()
 const { currentStage, currentStageId, isLastStage, playerUpgrades, advanceStage } = useBaybladeCampaign()
 const { showHint, startHintTimer, clearHint } = useHint(5000)
+const { shakeStyle } = useScreenshake()
 const { t } = useI18n()
 
 // ─── Canvas Refs ───────────────────────────────────────────────────────────
@@ -221,6 +223,7 @@ onUnmounted(() => {
 <template lang="pug">
   div.arena.relative.w-screen.h-screen.overflow-hidden.flex.items-center.justify-center(
     class="bg-[#0d1117]"
+    :style="shakeStyle"
   )
     //- Game Canvas
     canvas(
@@ -289,7 +292,8 @@ onUnmounted(() => {
       //- Bottom-right config button (always visible when not in reward overlay)
       div(
         v-if="showConfigButton && !showReward"
-        class="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 pointer-events-auto"
+        class="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 pointer-events-auto z-50"
+        :style="{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }"
       )
         FIconButton(
           type="secondary"

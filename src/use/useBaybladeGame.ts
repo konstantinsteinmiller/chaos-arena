@@ -13,6 +13,9 @@ import { baybladeModelImgPath } from '@/use/useModels'
 import type { TopPartId } from '@/types/bayblade'
 import { isDebug } from '@/use/useMatch.ts'
 import { isMobileLandscape, isMobilePortrait } from '@/use/useUser.ts'
+import { useScreenshake } from '@/use/useScreenshake'
+
+const { triggerShake } = useScreenshake()
 
 // ─── Physics Constants ───────────────────────────────────────────────────────
 
@@ -222,6 +225,7 @@ export const useBaybladeGame = () => {
   const damageNumbers: DamageNumber[] = []
 
   const spawnDamageNumber = (x: number, y: number, value: number, dealerOwner: 'player' | 'npc') => {
+    if (Math.round(value) <= 0) return
     // Random angle in a 60° cone pointing upward (centered at -90°)
     const baseAngle = -Math.PI / 2
     const spread = (Math.PI / 3) // 60°
@@ -783,6 +787,8 @@ export const useBaybladeGame = () => {
 
     if (dist >= minDist || dist < 0.01) return
 
+    triggerShake('small')
+
     const nx = dx / dist
     const ny = dy / dist
 
@@ -1170,14 +1176,11 @@ export const useBaybladeGame = () => {
   }
 
   const renderDragIndicator = (ctx: CanvasRenderingContext2D, blade: BaybladeState) => {
-    const { dx, dy } = dragVector.value
-    const mag = dragMagnitude.value
-
-    // Cancel zone indicator — show when dragging
-    const pointerDx = dragCurrent.value.x - blade.x
-    const pointerDy = dragCurrent.value.y - blade.y
-    const pointerDist = Math.sqrt(pointerDx * pointerDx + pointerDy * pointerDy)
-    const inCancelZone = pointerDist < blade.radius
+    // Compute pull vector from blade center to pointer
+    const pullDx = dragCurrent.value.x - blade.x
+    const pullDy = dragCurrent.value.y - blade.y
+    const pullMag = Math.sqrt(pullDx * pullDx + pullDy * pullDy)
+    const inCancelZone = pullMag < blade.radius
 
     ctx.save()
     // Cancel zone circle
@@ -1204,12 +1207,12 @@ export const useBaybladeGame = () => {
     }
     ctx.restore()
 
-    if (mag < 3) return
+    if (pullMag < 3) return
 
     const ratio = dragForceRatio.value
 
     ctx.save()
-    // Pull line (dashed)
+    // Pull line (dashed) — blade center to pointer
     ctx.strokeStyle = 'rgba(255,170,0,0.5)'
     ctx.lineWidth = 2
     ctx.setLineDash([6, 4])
@@ -1219,9 +1222,9 @@ export const useBaybladeGame = () => {
     ctx.stroke()
     ctx.setLineDash([])
 
-    // Launch arrow (opposite direction)
-    const nx = -dx / mag
-    const ny = -dy / mag
+    // Launch arrow (opposite of pull direction, using same vector)
+    const nx = -pullDx / pullMag
+    const ny = -pullDy / pullMag
     const arrowLen = 30 + 50 * ratio
     const endX = blade.x + nx * arrowLen
     const endY = blade.y + ny * arrowLen
