@@ -81,7 +81,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
     transition(name="pop")
       div(
         v-if="isOpen"
-        class="absolute z-50 left-0 right-0 mt-3 rounded-2xl border-[3px] border-[#0f1a30] bg-[#1a2b4b] shadow-2xl overflow-hidden"
+        class="absolute z-1 left-0 right-0 mt-3 rounded-2xl border-[3px] border-[#0f1a30] bg-[#1a2b4b] shadow-2xl overflow-hidden"
       )
         //- Scrollable Area
         div(

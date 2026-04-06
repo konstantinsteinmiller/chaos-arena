@@ -336,12 +336,27 @@ export const useBaybladeGame = () => {
       return createBladeState('player', spreadX, ARENA_RADIUS * 0.4, cfg)
     })
 
-    // NPC blades: top half, spread evenly (supports 2-4)
-    const nCount = nTeam.length
-    npcBlades.value = nTeam.map((cfg, i) => {
-      const spreadX = nCount === 1 ? 0 : (i / (nCount - 1) - 0.5) * ARENA_RADIUS * 0.7
-      return createBladeState('npc', spreadX, -ARENA_RADIUS * 0.4, cfg)
-    })
+    // NPC blades: random positions in the top half of the arena, spaced apart
+    const MIN_BLADE_DIST = BLADE_RADIUS * 4
+    const npcPositions: { x: number; y: number }[] = []
+    for (const cfg of nTeam) {
+      let x: number, y: number
+      let attempts = 0
+      do {
+        const angle = Math.PI + Math.random() * Math.PI // top half: PI to 2*PI
+        const dist = BLADE_RADIUS * 2 + Math.random() * (ARENA_RADIUS * 0.7 - BLADE_RADIUS * 2)
+        x = Math.cos(angle) * dist
+        y = Math.sin(angle) * dist
+        attempts++
+      } while (
+        attempts < 50 &&
+        npcPositions.some(p => Math.hypot(p.x - x, p.y - y) < MIN_BLADE_DIST)
+        )
+      npcPositions.push({ x, y })
+    }
+    npcBlades.value = nTeam.map((cfg, i) =>
+      createBladeState('npc', npcPositions[i]!.x, npcPositions[i]!.y, cfg)
+    )
 
     isDragging.value = false
     selectedBladeId.value = null

@@ -58,6 +58,7 @@ const useCheats = () => {
   }
 
   const setBaybladeStage = (stageId: number) => {
+    console.log('stageId: ', stageId)
     if (stageId < 1 || stageId > STAGES.length) {
       console.warn(`[CHEAT] Invalid stage ${stageId}. Must be 1-${STAGES.length}.`)
       return
@@ -104,7 +105,17 @@ const useCheats = () => {
     'ctrl+shift+7': () => setBaybladeStage(7),
     'ctrl+shift+8': () => setBaybladeStage(8),
     'ctrl+shift+9': () => setBaybladeStage(9),
-    'ctrl+shift+0': () => setBaybladeStage(10)
+    'ctrl+shift+0': () => setBaybladeStage(10),
+    'ctrl+shift+alt+1': () => setBaybladeStage(11),
+    'ctrl+shift+alt+2': () => setBaybladeStage(12),
+    'ctrl+shift+alt+3': () => setBaybladeStage(13),
+    'ctrl+shift+alt+4': () => setBaybladeStage(14),
+    'ctrl+shift+alt+5': () => setBaybladeStage(15),
+    'ctrl+shift+alt+6': () => setBaybladeStage(16),
+    'ctrl+shift+alt+7': () => setBaybladeStage(17),
+    'ctrl+shift+alt+8': () => setBaybladeStage(18),
+    'ctrl+shift+alt+9': () => setBaybladeStage(19),
+    'ctrl+shift+alt+0': () => setBaybladeStage(20)
   }
 
   /**

@@ -91,7 +91,7 @@ const doResetProgress = () => {
     div(v-if="currentTab === 'general'")
       div(class="flex flex-col gap-2 p-2")
         //- Language Selection
-        div(class="z-[100] flex flex-col gap-2 scale-80 sm:scale-100")
+        div(class="z-[10] flex flex-col gap-2 scale-80 sm:scale-100")
           FSelect(
             class="!text-[10px] md:text-[12px]"
             :label="t('language')"
@@ -106,12 +106,12 @@ const doResetProgress = () => {
           div.flex-grow-1(class="!text-[10px] md:text-[12px] font-black text-white uppercase italic") {{ t('resetCampaign') }}
           div.flex.justify-end.scale-60.flex-shrink-1
             FButton.flex-shrink-1(type="secondary" @click="askReset") {{ t('reset') }}
-        div(class="flex items-center justify-between !text-[10px]")
-          span(class="!text-[10px] md:text-[12px] font-black text-white uppercase italic") {{ t('showRulesModal') }}
-          FSwitch(
-            :model-value="!userSkipRulesModal"
-            @update:model-value="setSettingValue('skipRulesModal', !$event)"
-          )
+        //div(class="flex items-center justify-between !text-[10px]")
+        //  span(class="!text-[10px] md:text-[12px] font-black text-white uppercase italic") {{ t('showRulesModal') }}
+        //  FSwitch(
+        //    :model-value="!userSkipRulesModal"
+        //    @update:model-value="setSettingValue('skipRulesModal', !$event)"
+        //  )
         hr(class="border-slate-600 my-1 md:my-2 pt-0")
         FModal(v-model:model-value="showAskResetModal"
           :title="`${t('reset')}?`"
@@ -162,7 +162,7 @@ en:
   showRulesModal: "Show Match Rules before game"
   resetCampaign: "Reset Game Progress"
   reset: "Reset"
-  sureResetCampaign: "Are you sure you want to reset the campaign and your card collection?"
+  sureResetCampaign: "Are you sure you want to reset the game progress?"
   audioSettingsPlaceholder: "Audio Settings coming soon..."
   easy: "Novice"
   medium: "Squire"
@@ -187,7 +187,7 @@ de:
   showRulesModal: "Kampfregeln vor dem Spiel anzeigen"
   resetCampaign: "Spielfortschritt zurücksetzen"
   reset: "zurücksetzen"
-  sureResetCampaign: "Bist du sicher, dass du den Fortschritt der Kampagne und deine Kartensammlung zurücksetzen möchtest?"
+  sureResetCampaign: "Bist du sicher, dass du den Spielfortschritt zurücksetzen möchtest?"
   audioSettingsPlaceholder: "Audio-Einstellungen folgen in Kürze..."
   easy: "Anfänger"
   medium: "Knappe"
@@ -237,7 +237,7 @@ es:
   showRulesModal: "Mostrar reglas antes del juego"
   resetCampaign: "Reiniciar progreso del juego"
   reset: "Reiniciar"
-  sureResetCampaign: "¿Estás seguro de que quieres reiniciar la campaña и tu colección de cartas?"
+  sureResetCampaign: "¿Estás seguro de que quieres reiniciar la campaña y tu colección de cartas?"
   audioSettingsPlaceholder: "Ajustes de audio próximamente..."
   easy: "Novicio"
   medium: "Escudero"
@@ -312,7 +312,7 @@ zh:
   showRulesModal: "游戏前显示比赛规则"
   resetCampaign: "重置游戏进度"
   reset: "重置"
-  sureResetCampaign: "您确定要重置战役和您的卡牌收藏吗？"
+  sureResetCampaign: "你确定要重置游戏进度和你的卡牌收藏吗？"
   audioSettingsPlaceholder: "音频设置即将推出..."
   easy: "新手"
   medium: "侍从"
@@ -337,7 +337,7 @@ ru:
   showRulesModal: "Показывать правила перед игрой"
   resetCampaign: "Сбросить игровой прогресс"
   reset: "Сброс"
-  sureResetCampaign: "Вы уверены, что хотите сбросить кампанию и вашу коллекцию карт?"
+  sureResetCampaign: "Вы уверены, что хотите сбросить игровой прогресс и вашу коллекцию карт?"
   audioSettingsPlaceholder: "Настройки звука скоро появятся..."
   easy: "Новичок"
   medium: "Оруженосец"
