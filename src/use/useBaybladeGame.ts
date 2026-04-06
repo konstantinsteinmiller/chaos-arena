@@ -156,11 +156,11 @@ export const useBaybladeGame = () => {
   // ── Blade Model Images ──────────────────────────────────────────────────
   const bladeModelImages = new Map<string, HTMLImageElement>()
 
-  const getBladeModelImage = (topPartId: TopPartId, owner: 'player' | 'npc'): HTMLImageElement | null => {
-    const key = `${topPartId}_${owner}`
+  const getBladeModelImage = (topPartId: TopPartId, owner: 'player' | 'npc', modelOverride?: string): HTMLImageElement | null => {
+    const key = modelOverride ?? `${topPartId}_${owner}`
     let img = bladeModelImages.get(key)
     if (!img) {
-      img = preloadImage(baybladeModelImgPath(topPartId, owner))
+      img = preloadImage(baybladeModelImgPath(topPartId, owner, modelOverride))
       bladeModelImages.set(key, img)
     }
     return (img.complete && img.naturalWidth > 0) ? img : null
@@ -325,17 +325,19 @@ export const useBaybladeGame = () => {
     stopPhysics()
     nextBladeId = 0
 
-    // Player models: bottom half, spread apart
-    playerBlades.value = [
-      createBladeState('player', -ARENA_RADIUS * 0.35, ARENA_RADIUS * 0.4, pTeam[0]),
-      createBladeState('player', ARENA_RADIUS * 0.35, ARENA_RADIUS * 0.4, pTeam[1])
-    ]
+    // Player blades: bottom half, spread evenly
+    const pCount = pTeam.length
+    playerBlades.value = pTeam.map((cfg, i) => {
+      const spreadX = pCount === 1 ? 0 : (i / (pCount - 1) - 0.5) * ARENA_RADIUS * 0.7
+      return createBladeState('player', spreadX, ARENA_RADIUS * 0.4, cfg)
+    })
 
-    // NPC models: top half
-    npcBlades.value = [
-      createBladeState('npc', -ARENA_RADIUS * 0.35, -ARENA_RADIUS * 0.4, nTeam[0]),
-      createBladeState('npc', ARENA_RADIUS * 0.35, -ARENA_RADIUS * 0.4, nTeam[1])
-    ]
+    // NPC blades: top half, spread evenly (supports 2-4)
+    const nCount = nTeam.length
+    npcBlades.value = nTeam.map((cfg, i) => {
+      const spreadX = nCount === 1 ? 0 : (i / (nCount - 1) - 0.5) * ARENA_RADIUS * 0.7
+      return createBladeState('npc', spreadX, -ARENA_RADIUS * 0.4, cfg)
+    })
 
     isDragging.value = false
     selectedBladeId.value = null
@@ -685,14 +687,14 @@ export const useBaybladeGame = () => {
     // All-pairs collision (including friendly fire!)
     for (let i = 0; i < all.length; i++) {
       for (let j = i + 1; j < all.length; j++) {
-        if (all[i].hp <= 0 || all[j].hp <= 0) continue
-        resolveCollision(all[i], all[j])
+        if (all[i]!.hp <= 0 || all[j]!.hp <= 0) continue
+        resolveCollision(all[i]!, all[j]!)
       }
     }
 
     // Update spark animations (remove finished ones)
     for (let i = activeSparks.length - 1; i >= 0; i--) {
-      if (updateSpritesheetAnim(activeSparks[i], 16)) {
+      if (updateSpritesheetAnim(activeSparks[i]!, 16)) {
         activeSparks.splice(i, 1)
       }
     }
@@ -1083,7 +1085,7 @@ export const useBaybladeGame = () => {
 
 
     // Model image (rotates with blade)
-    const modelImg = getBladeModelImage(blade.config.topPartId, owner)
+    const modelImg = getBladeModelImage(blade.config.topPartId, owner, blade.config.modelId)
     if (modelImg) {
       ctx.translate(x, y)
       ctx.rotate(rotation)

@@ -65,7 +65,14 @@ const useCheats = () => {
     const { currentStageId } = useBaybladeCampaign()
     currentStageId.value = stageId
     localStorage.setItem('bayblade_campaign_stage', stageId.toString())
-    console.warn(`[CHEAT] Bayblade stage set to ${stageId} (${STAGES[stageId - 1]!.name}).`)
+    console.warn(`[CHEAT] Bayblade stage set to ${stageId} (${STAGES[stageId - 1]?.name}).`)
+  }
+
+  /** Jump forward/backward by 10 stages */
+  const shiftBaybladeStage = (delta: number) => {
+    const { currentStageId } = useBaybladeCampaign()
+    const newStage = Math.max(1, Math.min(STAGES.length, currentStageId.value + delta))
+    setBaybladeStage(newStage)
   }
 
   const resetCampaign = () => {

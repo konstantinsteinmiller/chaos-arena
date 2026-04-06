@@ -13,12 +13,13 @@ export const modelImgPath = (id: string) => {
 
 export const BAYBLADE_MODEL_IDS = [
   'fire', 'phoenix', 'thunder', 'bluedragon', 'turtle',
-  'ice', 'chip', 'mysticaleye', 'nature', 'wulf'
+  'ice', 'chip', 'mysticaleye', 'nature', 'wulf',
+  'castle', 'eagle', 'prisma', 'scorpion', 'shell', 'snake', 'thunderstorm'
 ] as const
 
 export type BaybladeModelId = (typeof BAYBLADE_MODEL_IDS)[number]
 
-/** Maps each top part to a player and NPC model image */
+/** Maps each top part to a player and default NPC model image */
 export const BAYBLADE_MODEL_MAP: Record<TopPartId, { player: BaybladeModelId; npc: BaybladeModelId }> = {
   star: { player: 'fire', npc: 'phoenix' },
   triangle: { player: 'thunder', npc: 'bluedragon' },
@@ -27,8 +28,9 @@ export const BAYBLADE_MODEL_MAP: Record<TopPartId, { player: BaybladeModelId; np
   cushioned: { player: 'nature', npc: 'wulf' }
 }
 
-/** Get the resolved image path for a bayblade given its top part and owner */
-export const baybladeModelImgPath = (topPartId: TopPartId, owner: 'player' | 'npc'): string => {
+/** Get the resolved image path for a bayblade given its top part, owner, and optional override */
+export const baybladeModelImgPath = (topPartId: TopPartId, owner: 'player' | 'npc', modelOverride?: string): string => {
+  if (modelOverride) return modelImgPath(modelOverride)
   const mapping = BAYBLADE_MODEL_MAP[topPartId]
   const modelId = owner === 'player' ? mapping.player : mapping.npc
   return modelImgPath(modelId)

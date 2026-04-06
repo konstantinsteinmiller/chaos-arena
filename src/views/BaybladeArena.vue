@@ -54,7 +54,8 @@ const stageNpcTeam = (): BaybladeConfig[] =>
     topPartId: e.topPartId,
     bottomPartId: e.bottomPartId,
     topLevel: e.topLevel,
-    bottomLevel: e.bottomLevel
+    bottomLevel: e.bottomLevel,
+    modelId: e.modelId
   }))
 
 /** Player team with current upgrade levels applied */

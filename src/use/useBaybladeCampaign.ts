@@ -9,12 +9,13 @@ export interface StageBladeConfig {
   bottomPartId: BottomPartId
   topLevel: number
   bottomLevel: number
+  modelId?: string
 }
 
 export interface Stage {
   id: number
   name: string
-  enemyTeam: [StageBladeConfig, StageBladeConfig]
+  enemyTeam: StageBladeConfig[]
   rewardWin: number
   rewardLose: number
 }
@@ -22,112 +23,279 @@ export interface Stage {
 // ─── Manually Editable Stage Definitions ────────────────────────────────────
 
 export const STAGES: Stage[] = [
-  // ── Early Game: low stats, forgiving ──────────────────────────────────────
+  // ── Early Game (1-5): low stats, forgiving ────────────────────────────────
   {
-    id: 1,
-    name: 'Rookie Arena',
+    id: 1, name: 'Rookie Arena',
     enemyTeam: [
-      { topPartId: 'cushioned', bottomPartId: 'balanced', topLevel: 0, bottomLevel: 0 },
-      { topPartId: 'round', bottomPartId: 'balanced', topLevel: 0, bottomLevel: 0 }
+      { topPartId: 'cushioned', bottomPartId: 'balanced', topLevel: 0, bottomLevel: 0, modelId: 'shell' },
+      { topPartId: 'round', bottomPartId: 'balanced', topLevel: 0, bottomLevel: 0, modelId: 'turtle' }
     ],
-    rewardWin: 80,
-    rewardLose: 30
+    rewardWin: 80, rewardLose: 30
   },
   {
-    id: 2,
-    name: 'Training Grounds',
+    id: 2, name: 'Training Grounds',
     enemyTeam: [
-      { topPartId: 'quadratic', bottomPartId: 'balanced', topLevel: 0, bottomLevel: 0 },
-      { topPartId: 'triangle', bottomPartId: 'balanced', topLevel: 0, bottomLevel: 0 }
+      { topPartId: 'quadratic', bottomPartId: 'balanced', topLevel: 0, bottomLevel: 0, modelId: 'mysticaleye' },
+      { topPartId: 'triangle', bottomPartId: 'balanced', topLevel: 0, bottomLevel: 0, modelId: 'bluedragon' }
     ],
-    rewardWin: 90,
-    rewardLose: 30
-  },
-
-  // ── Mid Game: enemies start upgrading ─────────────────────────────────────
-  {
-    id: 3,
-    name: 'Iron League',
-    enemyTeam: [
-      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 1, bottomLevel: 0 },
-      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 0, bottomLevel: 1 }
-    ],
-    rewardWin: 100,
-    rewardLose: 35
+    rewardWin: 90, rewardLose: 30
   },
   {
-    id: 4,
-    name: 'Steel Circuit',
+    id: 3, name: 'Iron League',
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'balanced', topLevel: 1, bottomLevel: 0 },
-      { topPartId: 'quadratic', bottomPartId: 'speedy', topLevel: 1, bottomLevel: 1 }
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 1, bottomLevel: 0, modelId: 'eagle' },
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 0, bottomLevel: 1, modelId: 'castle' }
     ],
-    rewardWin: 110,
-    rewardLose: 35
+    rewardWin: 100, rewardLose: 35
   },
   {
-    id: 5,
-    name: 'Gold Division',
+    id: 4, name: 'Steel Circuit',
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 1, bottomLevel: 1 },
-      { topPartId: 'triangle', bottomPartId: 'tanky', topLevel: 1, bottomLevel: 1 }
+      { topPartId: 'star', bottomPartId: 'balanced', topLevel: 1, bottomLevel: 0, modelId: 'phoenix' },
+      { topPartId: 'quadratic', bottomPartId: 'speedy', topLevel: 1, bottomLevel: 1, modelId: 'chip' },
+      { topPartId: 'cushioned', bottomPartId: 'balanced', topLevel: 0, bottomLevel: 0, modelId: 'nature' }
     ],
-    rewardWin: 120,
-    rewardLose: 40
+    rewardWin: 110, rewardLose: 35
+  },
+  {
+    id: 5, name: 'Gold Division',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 1, bottomLevel: 1, modelId: 'fire' },
+      { topPartId: 'triangle', bottomPartId: 'tanky', topLevel: 1, bottomLevel: 1, modelId: 'thunder' },
+      { topPartId: 'round', bottomPartId: 'balanced', topLevel: 1, bottomLevel: 0, modelId: 'ice' },
+      { topPartId: 'cushioned', bottomPartId: 'speedy', topLevel: 0, bottomLevel: 1, modelId: 'wulf' }
+    ],
+    rewardWin: 130, rewardLose: 40
   },
 
-  // ── Late Game: higher upgrades, tougher combos ────────────────────────────
+  // ── Mid Game (6-10): enemies start upgrading ──────────────────────────────
   {
-    id: 6,
-    name: 'Platinum Ring',
+    id: 6, name: 'Platinum Ring',
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 2, bottomLevel: 1 },
-      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 1, bottomLevel: 2 }
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 2, bottomLevel: 1, modelId: 'scorpion' },
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 1, bottomLevel: 2, modelId: 'prisma' }
     ],
-    rewardWin: 140,
-    rewardLose: 45
+    rewardWin: 140, rewardLose: 45
   },
   {
-    id: 7,
-    name: 'Diamond Arena',
+    id: 7, name: 'Diamond Arena',
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 2, bottomLevel: 2 },
-      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 2, bottomLevel: 1 }
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 2, bottomLevel: 2, modelId: 'thunderstorm' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 2, bottomLevel: 1, modelId: 'snake' },
+      { topPartId: 'quadratic', bottomPartId: 'balanced', topLevel: 1, bottomLevel: 1, modelId: 'mysticaleye' }
     ],
-    rewardWin: 160,
-    rewardLose: 50
+    rewardWin: 160, rewardLose: 50
   },
   {
-    id: 8,
-    name: 'Champion\'s Gate',
+    id: 8, name: 'Champion\'s Gate',
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'balanced', topLevel: 3, bottomLevel: 2 },
-      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 2, bottomLevel: 3 }
+      { topPartId: 'star', bottomPartId: 'balanced', topLevel: 3, bottomLevel: 2, modelId: 'fire' },
+      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 2, bottomLevel: 3, modelId: 'castle' }
     ],
-    rewardWin: 180,
-    rewardLose: 55
+    rewardWin: 180, rewardLose: 55
+  },
+  {
+    id: 9, name: 'Legend\'s Trial',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 3, bottomLevel: 3, modelId: 'phoenix' },
+      { topPartId: 'quadratic', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 3, modelId: 'chip' },
+      { topPartId: 'triangle', bottomPartId: 'balanced', topLevel: 2, bottomLevel: 2, modelId: 'eagle' }
+    ],
+    rewardWin: 200, rewardLose: 60
+  },
+  {
+    id: 10, name: 'Warlord\'s Keep',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 3, modelId: 'scorpion' },
+      { topPartId: 'star', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 4, modelId: 'thunderstorm' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 3, bottomLevel: 2, modelId: 'snake' },
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 2, bottomLevel: 3, modelId: 'prisma' }
+    ],
+    rewardWin: 250, rewardLose: 70
   },
 
-  // ── End Game: maxed enemies ───────────────────────────────────────────────
+  // ── Late Game (11-15): tougher combos ─────────────────────────────────────
   {
-    id: 9,
-    name: 'Legend\'s Trial',
+    id: 11, name: 'Shadow Pit',
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 3, bottomLevel: 3 },
-      { topPartId: 'quadratic', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 3 }
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 3, bottomLevel: 3, modelId: 'bluedragon' },
+      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 3, modelId: 'shell' }
     ],
-    rewardWin: 200,
-    rewardLose: 60
+    rewardWin: 200, rewardLose: 65
   },
   {
-    id: 10,
-    name: 'Final Boss',
+    id: 12, name: 'Crimson Forge',
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 3 },
-      { topPartId: 'star', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 4 }
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 3, modelId: 'fire' },
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 4, modelId: 'turtle' },
+      { topPartId: 'quadratic', bottomPartId: 'balanced', topLevel: 3, bottomLevel: 3, modelId: 'mysticaleye' }
     ],
-    rewardWin: 300,
-    rewardLose: 80
+    rewardWin: 220, rewardLose: 70
+  },
+  {
+    id: 13, name: 'Frost Cavern',
+    enemyTeam: [
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 4, bottomLevel: 4, modelId: 'ice' },
+      { topPartId: 'cushioned', bottomPartId: 'balanced', topLevel: 3, bottomLevel: 3, modelId: 'nature' }
+    ],
+    rewardWin: 210, rewardLose: 65
+  },
+  {
+    id: 14, name: 'Thunder Peaks',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 4, modelId: 'thunder' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 3, modelId: 'eagle' },
+      { topPartId: 'quadratic', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 3, modelId: 'chip' }
+    ],
+    rewardWin: 230, rewardLose: 70
+  },
+  {
+    id: 15, name: 'Serpent\'s Nest',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 5, bottomLevel: 4, modelId: 'snake' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 4, modelId: 'scorpion' },
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 4, bottomLevel: 4, modelId: 'prisma' },
+      { topPartId: 'cushioned', bottomPartId: 'balanced', topLevel: 3, bottomLevel: 3, modelId: 'wulf' }
+    ],
+    rewardWin: 280, rewardLose: 80
+  },
+
+  // ── End Game (16-20): high upgrades ───────────────────────────────────────
+  {
+    id: 16, name: 'Obsidian Colosseum',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 5, bottomLevel: 4, modelId: 'phoenix' },
+      { topPartId: 'quadratic', bottomPartId: 'tanky', topLevel: 4, bottomLevel: 5, modelId: 'castle' }
+    ],
+    rewardWin: 240, rewardLose: 75
+  },
+  {
+    id: 17, name: 'Volcanic Rift',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 5, bottomLevel: 5, modelId: 'fire' },
+      { topPartId: 'triangle', bottomPartId: 'balanced', topLevel: 5, bottomLevel: 4, modelId: 'thunderstorm' },
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 4, bottomLevel: 5, modelId: 'shell' }
+    ],
+    rewardWin: 260, rewardLose: 80
+  },
+  {
+    id: 18, name: 'Crystal Spire',
+    enemyTeam: [
+      { topPartId: 'quadratic', bottomPartId: 'balanced', topLevel: 5, bottomLevel: 5, modelId: 'prisma' },
+      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 5, bottomLevel: 5, modelId: 'nature' }
+    ],
+    rewardWin: 250, rewardLose: 75
+  },
+  {
+    id: 19, name: 'Storm Citadel',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 6, bottomLevel: 5, modelId: 'thunder' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 5, bottomLevel: 5, modelId: 'bluedragon' },
+      { topPartId: 'quadratic', bottomPartId: 'tanky', topLevel: 5, bottomLevel: 5, modelId: 'mysticaleye' }
+    ],
+    rewardWin: 280, rewardLose: 85
+  },
+  {
+    id: 20, name: 'Dragon\'s Throne',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 6, bottomLevel: 6, modelId: 'scorpion' },
+      { topPartId: 'star', bottomPartId: 'tanky', topLevel: 5, bottomLevel: 6, modelId: 'fire' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 6, bottomLevel: 5, modelId: 'snake' },
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 5, bottomLevel: 6, modelId: 'castle' }
+    ],
+    rewardWin: 350, rewardLose: 100
+  },
+
+  // ── Master Tier (21-25): punishing encounters ─────────────────────────────
+  {
+    id: 21, name: 'Phantom Depths',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 6, bottomLevel: 6, modelId: 'thunderstorm' },
+      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 6, bottomLevel: 6, modelId: 'turtle' }
+    ],
+    rewardWin: 300, rewardLose: 90
+  },
+  {
+    id: 22, name: 'Abyssal Arena',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 7, bottomLevel: 6, modelId: 'phoenix' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 6, bottomLevel: 6, modelId: 'eagle' },
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 6, bottomLevel: 7, modelId: 'ice' }
+    ],
+    rewardWin: 320, rewardLose: 95
+  },
+  {
+    id: 23, name: 'Void Nexus',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'balanced', topLevel: 7, bottomLevel: 7, modelId: 'chip' },
+      { topPartId: 'quadratic', bottomPartId: 'tanky', topLevel: 7, bottomLevel: 7, modelId: 'prisma' }
+    ],
+    rewardWin: 310, rewardLose: 90
+  },
+  {
+    id: 24, name: 'Titan\'s Gauntlet',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 7, bottomLevel: 7, modelId: 'fire' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 7, bottomLevel: 6, modelId: 'snake' },
+      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 6, bottomLevel: 7, modelId: 'wulf' }
+    ],
+    rewardWin: 340, rewardLose: 100
+  },
+  {
+    id: 25, name: 'Apocalypse Ring',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 8, bottomLevel: 7, modelId: 'scorpion' },
+      { topPartId: 'star', bottomPartId: 'tanky', topLevel: 7, bottomLevel: 8, modelId: 'thunderstorm' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 7, bottomLevel: 7, modelId: 'bluedragon' },
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 7, bottomLevel: 7, modelId: 'castle' }
+    ],
+    rewardWin: 400, rewardLose: 110
+  },
+
+  // ── Legendary Tier (26-30): ultimate challenges ───────────────────────────
+  {
+    id: 26, name: 'Celestial Forge',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 8, bottomLevel: 8, modelId: 'phoenix' },
+      { topPartId: 'quadratic', bottomPartId: 'tanky', topLevel: 8, bottomLevel: 8, modelId: 'mysticaleye' }
+    ],
+    rewardWin: 350, rewardLose: 100
+  },
+  {
+    id: 27, name: 'Infernal Summit',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 8, bottomLevel: 8, modelId: 'fire' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 8, bottomLevel: 8, modelId: 'thunder' },
+      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 8, bottomLevel: 8, modelId: 'nature' }
+    ],
+    rewardWin: 380, rewardLose: 110
+  },
+  {
+    id: 28, name: 'Eternal Vortex',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 9, bottomLevel: 8, modelId: 'snake' },
+      { topPartId: 'round', bottomPartId: 'tanky', topLevel: 8, bottomLevel: 9, modelId: 'shell' }
+    ],
+    rewardWin: 370, rewardLose: 105
+  },
+  {
+    id: 29, name: 'Omega Trials',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 9, bottomLevel: 9, modelId: 'scorpion' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 9, bottomLevel: 8, modelId: 'eagle' },
+      { topPartId: 'quadratic', bottomPartId: 'balanced', topLevel: 8, bottomLevel: 9, modelId: 'prisma' }
+    ],
+    rewardWin: 420, rewardLose: 120
+  },
+  {
+    id: 30, name: 'Final Chaos',
+    enemyTeam: [
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 10, bottomLevel: 9, modelId: 'fire' },
+      { topPartId: 'star', bottomPartId: 'tanky', topLevel: 9, bottomLevel: 10, modelId: 'thunderstorm' },
+      { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 10, bottomLevel: 9, modelId: 'scorpion' },
+      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 9, bottomLevel: 10, modelId: 'castle' }
+    ],
+    rewardWin: 500, rewardLose: 150
   }
 ]
 

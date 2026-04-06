@@ -45,6 +45,7 @@ export interface BaybladeConfig {
   bottomPartId: BottomPartId
   topLevel?: number
   bottomLevel?: number
+  modelId?: string
 }
 
 export interface BaybladeStats {
