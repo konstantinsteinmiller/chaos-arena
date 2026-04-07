@@ -1,15 +1,10 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import MainMenu from '@/views/MainMenu'
-import CardSelectionView from '@/views/CardSelectionView'
-import BattleField from '@/views/BattleField.vue'
-import CampaignMap from '@/views/CampaignMap'
 import BaybladeArena from '@/views/BaybladeArena'
 import useUser, { isWeb } from '@/use/useUser'
 
 const routes = [
   { path: '/', name: 'main-menu', component: MainMenu, redirect: 'battle' },
-  { path: '/deck', name: 'deck', component: CardSelectionView },
-  { path: '/campaign', name: 'campaign', component: CampaignMap },
   { path: '/battle', name: 'battle', component: BaybladeArena }
 ]
 

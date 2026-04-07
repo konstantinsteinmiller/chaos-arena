@@ -52,4 +52,8 @@ const selectTab = (value: string | number) => {
 <style lang="sass" scoped>
 .brawl-text
   text-shadow: 2px 2px 0 #000
+
+@media (orientation: landscape) and (max-height: 500px)
+  .brawl-text
+    font-size: 0.7rem
 </style>

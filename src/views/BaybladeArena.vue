@@ -13,7 +13,7 @@ import useBaybladeCampaign from '@/use/useBaybladeCampaign'
 import { useHint } from '@/use/useHint'
 import { useScreenshake } from '@/use/useScreenshake'
 import type { BaybladeConfig } from '@/types/bayblade'
-import useUser from '@/use/useUser'
+import useUser, { isMobileLandscape, isMobilePortrait } from '@/use/useUser'
 import IconCoin from '@/components/icons/IconCoin.vue'
 import DailyRewards from '@/components/organisms/DailyRewards.vue'
 import FLogoProgress from '@/components/atoms/FLogoProgress.vue'
@@ -562,7 +562,7 @@ onUnmounted(() => {
       @continue="onRewardContinue"
     )
       template(#ribbon)
-        span.text-white.font-black.uppercase.italic {{ t('bayblade.rewards') }}
+        span.text-white.font-black.uppercase.italic.game-text(class="sm:text-2xl" :class="{ 'sm:text-2xl': !isMobileLandscape && !isMobilePortrait }") {{ t('bayblade.rewards') }}
       div.flex.flex-col.items-center.gap-4
         div.font-black.uppercase.tracking-wider.game-text(
           class="text-3xl sm:text-5xl"

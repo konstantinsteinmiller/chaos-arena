@@ -34,7 +34,7 @@ const handleTabChange = (val: string | number) => {
     enter-from-class="opacity-0 scale-50 translate-y-12"
     leave-to-class="opacity-0 scale-50 translate-y-12"
   )
-    div(v-if="modelValue" class="fixed inset-0 z-50 flex items-center justify-center p-4")
+    div(v-if="modelValue" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4")
       //- Backdrop
       div(class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="close")
 
@@ -42,7 +42,7 @@ const handleTabChange = (val: string | number) => {
       div(class="model-container relative w-full max-w-lg")
 
         //- Header Area (Tabs or Ribbon)
-        div(class="absolute -top-10 left-0 translate-y-2 right-0 z-10")
+        div(class="modal-header absolute -top-10 left-0 translate-y-2 right-0 z-10")
           //- CASE 1: Tabs provided
           template(v-if="tabs && tabs.length > 0")
             FTabs(
@@ -64,7 +64,7 @@ const handleTabChange = (val: string | number) => {
         div(class="relative")
           div(class="absolute inset-0 translate-y-2 rounded-[1.5rem] sm:rounded-[2.5rem] bg-[#0c1626]")
 
-          div(class="relative bg-[#1a2b4b] border-[5px] border-[#0f1a30] rounded-[1.25rem] sm:rounded-[2rem] pt-7 pb-0 px-2 sm:px-4 sm:pt-6  md:p-8 md:pb-2 md:pt-10")
+          div(class="modal-frame relative bg-[#1a2b4b] border-[5px] border-[#0f1a30] rounded-[1.25rem] sm:rounded-[2rem] pt-7 pb-0 px-2 sm:px-4 sm:pt-6 md:p-8 md:pb-2 md:pt-10")
 
             //- Close Button (X)
             button(
@@ -104,4 +104,21 @@ const handleTabChange = (val: string | number) => {
 
 .brawl-text
   text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000
+
+// ─── Landscape mobile: tighter chrome ────────────────────────────────────────
+@media (orientation: landscape) and (max-height: 500px)
+  .modal-overlay
+    padding: 0.375rem
+  .model-container
+    max-width: 42rem
+  .modal-header
+    transform: translateY(0.25rem)
+    top: -1.75rem
+  .modal-frame
+    padding-top: 1.25rem
+    padding-bottom: 0
+    padding-left: 0.375rem
+    padding-right: 0.375rem
+    border-width: 3px
+    border-radius: 1rem
 </style>

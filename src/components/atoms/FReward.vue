@@ -6,18 +6,21 @@
       class="z-[100] bg-black/60"
       @click="handleOverlayClick"
     )
-      //- Use $slots directly to avoid script/template sync issues
-      div.relative.mb-10.scale-90(
+      //- Parchment ribbon header
+      div.ribbon-wrap.relative.mb-10(
         v-if="$slots.ribbon"
-        class="sm:scale-100"
-        :class="{ '!mb-2 -mt-2': isMobileLandscape }"
+        class=""
+        :class="{ '!mb-2 -mt-2': isMobileLandscape, 'is-desktop': !isMobileLandscape && !isMobilePortrait }"
       )
-        div.absolute.inset-0.translate-y-1.rounded-lg(class="bg-[#1a2b4b]")
-        div.relative.flex.items-center.justify-center.bg-gradient-to-b.border-4.px-10.py-2.rounded-xl(
-          class="from-[#ffcd00] to-[#f7a000] border-[#0f1a30] min-w-[280px]"
+        img.ribbon-img.-mb-6(
+          src="/images/bg/parchment-ribbon_553x188.webp"
+          alt="ribbon-image"
+          draggable="false"
+          :class="{ '-mt-1': isMobilePortrait }"
         )
+        div.ribbon-content
           slot(name="ribbon")
-            span.text-white.font-black.uppercase.italic REWARDS
+            span.text-white.font-black.uppercase.italic.game-text REWARDS
 
       div.relative.w-full.h-full.flex.flex-col.items-center.justify-center
         slot
@@ -34,7 +37,7 @@
 <script setup lang="ts">
 import { computed, useSlots } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { isMobileLandscape } from '@/use/useUser'
+import { isMobileLandscape, isMobilePortrait } from '@/use/useUser'
 
 const props = defineProps<{
   modelValue: boolean
@@ -67,4 +70,40 @@ const handleOverlayClick = () => {
 
 .brawl-text
   text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000
+
+// ─── Parchment ribbon ────────────────────────────────────────────────────────
+
+.ribbon-wrap
+  position: relative
+  width: 90vw
+  max-width: 553px
+
+  &.is-desktop
+    @media (min-height: 501px)
+      width: 70vw
+      max-width: 400px
+
+.ribbon-img
+  display: block
+  width: 100%
+  height: auto
+  pointer-events: none
+  user-select: none
+
+.ribbon-content
+  position: absolute
+  // Center text in the main body of the ribbon (the wide center block).
+  // The ribbon tails extend ~12% on each side; the top/bottom ornamental
+  // edges eat ~22% top and ~30% bottom, leaving the sweet spot around center.
+  inset: 18% 15% 30% 15%
+  display: flex
+  align-items: center
+  justify-content: center
+  text-align: center
+
+@media (orientation: landscape) and (max-height: 500px)
+  .ribbon-wrap
+    width: 50vw
+    max-width: 400px
+
 </style>
