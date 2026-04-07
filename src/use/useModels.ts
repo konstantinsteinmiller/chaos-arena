@@ -2,7 +2,8 @@ import { prependBaseUrl } from '@/utils/function'
 import { type Element, ELEMENTS } from '@/utils/enums'
 import { isCampaignTest, isDbInitialized, isDebug } from '@/use/useMatch'
 import useUser from '@/use/useUser'
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import type { Ref } from 'vue'
 import type { TopPartId } from '@/types/bayblade'
 
 export const modelImgPath = (id: string) => {
@@ -29,12 +30,102 @@ export const BAYBLADE_MODEL_MAP: Record<TopPartId, { player: BaybladeModelId; np
   piercer: { player: 'scorpion', npc: 'snake' }
 }
 
+/** Skin display names */
+export const MODEL_LABELS: Record<BaybladeModelId, string> = {
+  fire: 'Fire',
+  phoenix: 'Phoenix',
+  thunder: 'Thunder',
+  bluedragon: 'Blue Dragon',
+  turtle: 'Turtle',
+  ice: 'Ice',
+  chip: 'Chip',
+  mysticaleye: 'Mystic Eye',
+  nature: 'Nature',
+  wulf: 'Wulf',
+  castle: 'Castle',
+  eagle: 'Eagle',
+  prisma: 'Prisma',
+  scorpion: 'Scorpion',
+  shell: 'Shell',
+  snake: 'Snake',
+  thunderstorm: 'Thunderstorm'
+}
+
+/** Available skins per top part (default skin is always first and free) */
+export const SKINS_PER_TOP: Record<TopPartId, BaybladeModelId[]> = {
+  star: ['fire', 'phoenix', 'thunderstorm'],
+  triangle: ['thunder', 'bluedragon', 'eagle'],
+  round: ['turtle', 'ice', 'shell'],
+  quadratic: ['chip', 'mysticaleye', 'prisma'],
+  cushioned: ['nature', 'wulf', 'castle'],
+  piercer: ['scorpion', 'snake', 'eagle']
+}
+
+export const SKIN_COST = 300
+
+// ─── Skin Persistence (singleton) ───────────────────────────────────────────
+
+const SKINS_KEY = 'bayblade_owned_skins'
+const SELECTED_SKINS_KEY = 'bayblade_selected_skins'
+
+const loadOwnedSkins = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(SKINS_KEY)
+    if (raw) return new Set(JSON.parse(raw))
+  } catch { /* fall through */
+  }
+  return new Set()
+}
+
+const loadSelectedSkins = (): Record<string, string> => {
+  try {
+    const raw = localStorage.getItem(SELECTED_SKINS_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch { /* fall through */
+  }
+  return {}
+}
+
+const ownedSkins: Ref<Set<string>> = ref(loadOwnedSkins())
+const selectedSkins: Ref<Record<string, string>> = ref(loadSelectedSkins())
+
+const saveOwnedSkins = () => {
+  localStorage.setItem(SKINS_KEY, JSON.stringify([...ownedSkins.value]))
+}
+
+const saveSelectedSkins = () => {
+  localStorage.setItem(SELECTED_SKINS_KEY, JSON.stringify(selectedSkins.value))
+}
+
+/** Default skins (first in each list) are always owned */
+export const isSkinOwned = (topPartId: TopPartId, modelId: BaybladeModelId): boolean => {
+  if (SKINS_PER_TOP[topPartId][0] === modelId) return true
+  return ownedSkins.value.has(`${topPartId}:${modelId}`)
+}
+
+export const buySkin = (topPartId: TopPartId, modelId: BaybladeModelId): boolean => {
+  if (isSkinOwned(topPartId, modelId)) return false
+  ownedSkins.value = new Set([...ownedSkins.value, `${topPartId}:${modelId}`])
+  saveOwnedSkins()
+  return true
+}
+
+export const selectSkin = (topPartId: TopPartId, modelId: BaybladeModelId) => {
+  selectedSkins.value = { ...selectedSkins.value, [topPartId]: modelId }
+  saveSelectedSkins()
+}
+
+export const getSelectedSkin = (topPartId: TopPartId): BaybladeModelId => {
+  const sel = selectedSkins.value[topPartId] as BaybladeModelId | undefined
+  if (sel && isSkinOwned(topPartId, sel)) return sel
+  return BAYBLADE_MODEL_MAP[topPartId].player
+}
+
 /** Get the resolved image path for a bayblade given its top part, owner, and optional override */
 export const baybladeModelImgPath = (topPartId: TopPartId, owner: 'player' | 'npc', modelOverride?: string): string => {
   if (modelOverride) return modelImgPath(modelOverride)
-  const mapping = BAYBLADE_MODEL_MAP[topPartId]
-  const modelId = owner === 'player' ? mapping.player : mapping.npc
-  return modelImgPath(modelId)
+  if (owner === 'player') return modelImgPath(getSelectedSkin(topPartId))
+  return modelImgPath(BAYBLADE_MODEL_MAP[topPartId].npc)
 }
 
 /**

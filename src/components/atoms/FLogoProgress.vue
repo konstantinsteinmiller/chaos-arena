@@ -1,9 +1,17 @@
 <template lang="pug">
-  div(class=" inset-0 flex items-center justify-center" :class="{ ' z-[9999]': progress < 100}")
+  div(
+    ref="logoRef"
+    class="fixed z-[100] transition-all ease-in-out"
+    :class="[settled ? 'duration-700 !z-[1]' : 'duration-0 z-[100]',  settled ? 'z-[1]': '']"
+    :style="positionStyle"
+  )
     div(class="relative flex flex-col items-center")
 
       //- Logo Progress Container
-      div(class="relative w-full h-full sm:w-32 sm:h-32")
+      div(
+        class="relative transition-all duration-700 ease-in-out"
+        :style="sizeStyle"
+      )
         //- Background (Grayscale)
         img(
           src="/images/logo/logo_256x256.webp" alt="logo loader"
@@ -21,29 +29,74 @@
           )
 
       //- Loading Text
-      div.absolute.-bottom-8(v-if="loadingProgress < 100" class="mt-0 flex flex-col items-center gap-1")
-        //span(class="loading-text uppercase tracking-widest") {{ t('loading_assets') }}
+      div.absolute.-bottom-8(v-if="!done" class="mt-0 flex flex-col items-center gap-1")
         span(class="percentage-text text-shadow font-mono text-amber-500") {{ Math.round(progress) }}%
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import useAssets from '@/use/useAssets'
 
-const { t } = useI18n()
 const { loadingProgress, preloadAssets } = useAssets()
 const progress = computed(() => loadingProgress.value)
 
 preloadAssets()
 
+const done = ref(false)
+const settled = ref(false)
+
+// Compute 40% of the smaller viewport dimension
+const viewportSize = ref(Math.min(window.innerWidth, window.innerHeight))
+const logoRef = ref<HTMLElement | null>(null)
+
+const onResize = () => {
+  viewportSize.value = Math.min(window.innerWidth, window.innerHeight)
+}
+
+onMounted(() => {
+  window.addEventListener('resize', onResize)
+  // Let initial position render before enabling transitions
+  requestAnimationFrame(() => {
+    settled.value = true
+  })
+})
+onUnmounted(() => window.removeEventListener('resize', onResize))
+
+const centeredSize = computed(() => Math.floor(viewportSize.value * 0.4))
+const finalSize = 64 // w-16 h-16
+
+const sizeStyle = computed(() => {
+  const s = done.value ? finalSize : centeredSize.value
+  return { width: `${s}px`, height: `${s}px` }
+})
+
+const positionStyle = computed(() => {
+  if (done.value) {
+    // Top-left below stage badge (~56px down, 12px left)
+    return { top: '56px', left: '12px', transform: 'none' }
+  }
+  // Centered
+  return {
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)'
+  }
+})
+
+watch(progress, (val) => {
+  if (val >= 100 && !done.value) {
+    // Small delay so user sees 100% before transition
+    setTimeout(() => {
+      done.value = true
+    }, 100)
+  }
+})
+
 // Create the circular mask style
 const maskStyle = computed(() => {
   return {
-    // Standard and Webkit prefix for broad browser support
     '-webkit-mask-image': `conic-gradient(black ${progress.value}%, transparent ${progress.value}%)`,
     'mask-image': `conic-gradient(black ${progress.value}%, transparent ${progress.value}%)`,
-    // Ensure the gradient starts from the top (12 o'clock)
     '-webkit-mask-origin': 'content-box',
     'mask-clip': 'content-box'
   }
@@ -51,20 +104,12 @@ const maskStyle = computed(() => {
 </script>
 
 <style scoped lang="sass">
-.loading-text
-  font-family: 'AmaticSC', serif
-  font-size: 2rem
-  color: white
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5)
-
 .percentage-text
   font-size: 1.2rem
   font-weight: bold
 
-// This helps the mask start from the top center
 div[style*="conic-gradient"]
   transform: rotate(0deg)
-  // Change to -90deg if you want it to start from the top
   mask-repeat: no-repeat
   -webkit-mask-repeat: no-repeat
 </style>

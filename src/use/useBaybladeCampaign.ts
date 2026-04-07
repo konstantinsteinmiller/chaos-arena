@@ -13,10 +13,15 @@ export interface StageBladeConfig {
   isBoss?: boolean
 }
 
+export type ArenaType = 'default' | 'boss' | 'lava' | 'ice' | 'forest' | 'thunder'
+
+export const ARENA_TYPES: ArenaType[] = ['default', 'boss', 'lava', 'ice', 'forest', 'thunder']
+
 export interface Stage {
   id: number
   name: string
   isBoss?: boolean
+  arenaType?: ArenaType
   enemyTeam: StageBladeConfig[]
   rewardWin: number
   rewardLose: number
@@ -94,7 +99,7 @@ export const STAGES: Stage[] = [
     rewardWin: 180, rewardLose: 55
   },
   {
-    id: 9, name: 'Legend\'s Trial',
+    id: 9, name: 'Legend\'s Trial', arenaType: 'forest',
     enemyTeam: [
       { topPartId: 'star', bottomPartId: 'speedy', topLevel: 3, bottomLevel: 3, modelId: 'phoenix' },
       { topPartId: 'quadratic', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 3, modelId: 'chip' },
@@ -120,24 +125,24 @@ export const STAGES: Stage[] = [
     rewardWin: 200, rewardLose: 65
   },
   {
-    id: 12, name: 'Crimson Forge',
+    id: 12, name: 'Crimson Forge', arenaType: 'lava',
     enemyTeam: [
       { topPartId: 'star', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 3, modelId: 'fire' },
       { topPartId: 'round', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 4, modelId: 'turtle' },
       { topPartId: 'quadratic', bottomPartId: 'balanced', topLevel: 3, bottomLevel: 3, modelId: 'mysticaleye' }
     ],
-    rewardWin: 220, rewardLose: 70
+    rewardWin: 210, rewardLose: 65
   },
   {
-    id: 13, name: 'Frost Cavern',
+    id: 13, name: 'Frost Cavern', arenaType: 'ice',
     enemyTeam: [
       { topPartId: 'round', bottomPartId: 'tanky', topLevel: 4, bottomLevel: 4, modelId: 'ice' },
       { topPartId: 'cushioned', bottomPartId: 'balanced', topLevel: 3, bottomLevel: 3, modelId: 'nature' }
     ],
-    rewardWin: 210, rewardLose: 65
+    rewardWin: 220, rewardLose: 70
   },
   {
-    id: 14, name: 'Thunder Peaks',
+    id: 14, name: 'Thunder Peaks', arenaType: 'thunder',
     enemyTeam: [
       { topPartId: 'star', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 4, modelId: 'thunder' },
       { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 4, bottomLevel: 3, modelId: 'eagle' },
@@ -163,7 +168,7 @@ export const STAGES: Stage[] = [
     rewardWin: 240, rewardLose: 75
   },
   {
-    id: 17, name: 'Volcanic Rift',
+    id: 17, name: 'Volcanic Rift', arenaType: 'lava',
     enemyTeam: [
       { topPartId: 'star', bottomPartId: 'speedy', topLevel: 5, bottomLevel: 5, modelId: 'fire' },
       { topPartId: 'triangle', bottomPartId: 'balanced', topLevel: 5, bottomLevel: 4, modelId: 'thunderstorm' },
@@ -172,7 +177,7 @@ export const STAGES: Stage[] = [
     rewardWin: 260, rewardLose: 80
   },
   {
-    id: 18, name: 'Crystal Spire',
+    id: 18, name: 'Crystal Spire', arenaType: 'ice',
     enemyTeam: [
       { topPartId: 'quadratic', bottomPartId: 'balanced', topLevel: 5, bottomLevel: 5, modelId: 'prisma' },
       { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 5, bottomLevel: 5, modelId: 'nature' }
@@ -180,7 +185,7 @@ export const STAGES: Stage[] = [
     rewardWin: 250, rewardLose: 75
   },
   {
-    id: 19, name: 'Storm Citadel',
+    id: 19, name: 'Storm Citadel', arenaType: 'thunder',
     enemyTeam: [
       { topPartId: 'star', bottomPartId: 'speedy', topLevel: 6, bottomLevel: 5, modelId: 'thunder' },
       { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 5, bottomLevel: 5, modelId: 'bluedragon' },
@@ -198,7 +203,7 @@ export const STAGES: Stage[] = [
 
   // ── Master Tier (21-25): punishing encounters ─────────────────────────────
   {
-    id: 21, name: 'Phantom Depths',
+    id: 21, name: 'Phantom Depths', arenaType: 'forest',
     enemyTeam: [
       { topPartId: 'star', bottomPartId: 'speedy', topLevel: 6, bottomLevel: 6, modelId: 'thunderstorm' },
       { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 6, bottomLevel: 6, modelId: 'turtle' }
@@ -249,7 +254,7 @@ export const STAGES: Stage[] = [
     rewardWin: 350, rewardLose: 100
   },
   {
-    id: 27, name: 'Infernal Summit',
+    id: 27, name: 'Infernal Summit', arenaType: 'lava',
     enemyTeam: [
       { topPartId: 'star', bottomPartId: 'speedy', topLevel: 8, bottomLevel: 8, modelId: 'fire' },
       { topPartId: 'triangle', bottomPartId: 'speedy', topLevel: 8, bottomLevel: 8, modelId: 'thunder' },
@@ -258,7 +263,7 @@ export const STAGES: Stage[] = [
     rewardWin: 380, rewardLose: 110
   },
   {
-    id: 28, name: 'Eternal Vortex',
+    id: 28, name: 'Eternal Vortex', arenaType: 'forest',
     enemyTeam: [
       { topPartId: 'star', bottomPartId: 'speedy', topLevel: 9, bottomLevel: 8, modelId: 'snake' },
       { topPartId: 'round', bottomPartId: 'tanky', topLevel: 8, bottomLevel: 9, modelId: 'shell' }

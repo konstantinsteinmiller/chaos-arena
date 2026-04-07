@@ -8,6 +8,7 @@ import type {
   MeteorParticle,
   SpritesheetAnimation
 } from '@/types/bayblade'
+import type { ArenaType } from '@/use/useBaybladeCampaign'
 import { computeStats } from '@/use/useBaybladeConfig'
 import { baybladeModelImgPath } from '@/use/useModels'
 import type { TopPartId } from '@/types/bayblade'
@@ -90,6 +91,11 @@ function renderSpritesheetAnim(ctx: CanvasRenderingContext2D, anim: SpritesheetA
   const drawH = frameHeight * scale
   ctx.drawImage(image, sx, sy, frameWidth, frameHeight, x - drawW / 2, y - drawH / 2, drawW, drawH)
 }
+
+// ─── Shared Arena State (singleton so cheats can access it) ─────────────────
+
+const arenaType: Ref<ArenaType> = ref('default')
+export { arenaType }
 
 // ─── Composable ──────────────────────────────────────────────────────────────
 
@@ -225,10 +231,16 @@ export const useBaybladeGame = () => {
     life: number     // remaining ms
     maxLife: number
     isCrit: boolean
+    comboText?: string  // thunder arena combo label
   }
 
   const DAMAGE_NUMBER_LIFE = 900
   const damageNumbers: DamageNumber[] = []
+
+  // Thunder arena combo tracking: per-blade last hit target + timestamp + stacks
+  const COMBO_WINDOW_MS = 3000
+  const COMBO_GRACE_MS = 100
+  const comboState = new Map<number, { targetId: number; lastTime: number; stacks: number }>()
 
   const spawnDamageNumber = (x: number, y: number, value: number, dealerOwner: 'player' | 'npc', isCrit = false) => {
     if (Math.round(value) <= 0) return
@@ -265,12 +277,12 @@ export const useBaybladeGame = () => {
       const alpha = Math.max(0, dn.life / dn.maxLife)
       const baseScale = 0.8 + 0.4 * (1 - alpha) // slightly grow as they fade
       const scale = dn.isCrit ? baseScale * 1.5 : baseScale
-      const text = dn.value.toString()
+      const text = dn.comboText ?? dn.value.toString()
 
       ctx.save()
       ctx.globalAlpha = alpha
       ctx.font = `bold ${20 * scale}px Arial`
-      ctx.textAlign = 'center'
+      ctx.textAlign = dn.comboText ? 'left' : 'center'
       ctx.textBaseline = 'middle'
 
       // Crit: dark orange pulsating aura
@@ -358,11 +370,16 @@ export const useBaybladeGame = () => {
   const initGame = (
     pTeam: BaybladeConfig[],
     nTeam: BaybladeConfig[],
-    boost = false
+    boost = false,
+    arena: ArenaType = 'default'
   ) => {
     firstGameBoost = boost
     stopPhysics()
     nextBladeId = 0
+    // Clear cached player model images so skin changes take effect
+    for (const key of [...bladeModelImages.keys()]) {
+      if (key.endsWith('_player')) bladeModelImages.delete(key)
+    }
 
     // Player blades: bottom half, spread evenly
     const pCount = pTeam.length
@@ -431,6 +448,7 @@ export const useBaybladeGame = () => {
     )
 
     isBossStage.value = nTeam.some(cfg => cfg.isBoss)
+    arenaType.value = isBossStage.value ? 'boss' : arena
 
     isDragging.value = false
     selectedBladeId.value = null
@@ -442,6 +460,7 @@ export const useBaybladeGame = () => {
     meteorParticles.value = []
     meteorIntroTimer = 0
     trails.clear()
+    comboState.clear()
     damageNumbers.length = 0
     phase.value = 'tap_to_start'
   }
@@ -783,6 +802,10 @@ export const useBaybladeGame = () => {
       if (blade.accelFramesLeft === 0) {
         const stats = statsFor(blade)
         let decay = stats.forceDecay
+        // Ice arena: significantly reduced friction (blades slide more)
+        if (arenaType.value === 'ice') {
+          decay = 1 - (1 - decay) * 0.35
+        }
         // Below 25% max speed, gradually increase deceleration to reduce idle time
         const maxSpd = BASE_MAX_FORCE * stats.speedMultiplier
         const spdRatio = speed(blade) / maxSpd
@@ -819,7 +842,10 @@ export const useBaybladeGame = () => {
       // Spin proportional to speed, scaled by HP (100% at full → 40% at 5% HP)
       const hpPct = Math.max(0.05, blade.hp / blade.maxHp)
       const hpSpinScale = 0.4 + 0.6 * hpPct
-      blade.rotation += (blade.rotationSpeed + spd * 0.02) * hpSpinScale
+      const comboRotMul = arenaType.value === 'thunder'
+        ? 1 + (comboState.get(blade.id)?.stacks ?? 0) * 0.2
+        : 1
+      blade.rotation += (blade.rotationSpeed + spd * 0.02) * hpSpinScale * comboRotMul
 
       // Hit flash decay
       if (blade.hitFlash > 0) blade.hitFlash--
@@ -875,11 +901,13 @@ export const useBaybladeGame = () => {
       phase.value = 'npc_turn'
       npcThinkingElapsed = 0
       launchedBladeId.value = null
+      comboState.clear()
     }
 
     if (phase.value === 'npc_launched' && launchedStopped) {
       phase.value = 'player_turn'
       launchedBladeId.value = null
+      comboState.clear()
       npcActiveBladeId.value = null
       // Auto-select first living player blade
       const first = livingBlades(playerBlades.value)[0]
@@ -927,6 +955,35 @@ export const useBaybladeGame = () => {
     blade.vx = (blade.vx - 2 * dot * nx) * effectiveBoost
     blade.vy = (blade.vy - 2 * dot * ny) * effectiveBoost
     blade.wallBounceCount++
+
+    // Arena-specific wall effects
+    if (arenaType.value === 'lava') {
+      const lavaDmg = Math.ceil(blade.maxHp * 0.025)
+      blade.hp = Math.max(1, blade.hp - lavaDmg)
+      blade.hitFlash = HIT_FLASH_FRAMES
+      const lavaAngle = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI / 3)
+      const lavaSpd = 0.06 + Math.random() * 0.03
+      damageNumbers.push({
+        x: blade.x, y: blade.y,
+        value: lavaDmg, life: DAMAGE_NUMBER_LIFE, maxLife: DAMAGE_NUMBER_LIFE,
+        vx: Math.cos(lavaAngle) * lavaSpd, vy: Math.sin(lavaAngle) * lavaSpd,
+        color: blade.owner === 'player' ? '#ff6666' : '#66aaff',
+        isCrit: false
+      })
+    } else if (arenaType.value === 'forest') {
+      const healed = Math.min(1, blade.maxHp - blade.hp)
+      blade.hp = Math.min(blade.maxHp, blade.hp + 1)
+      if (healed > 0) {
+        const healAngle = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI / 3)
+        const healSpd = 0.06 + Math.random() * 0.03
+        damageNumbers.push({
+          x: blade.x, y: blade.y,
+          value: healed, life: DAMAGE_NUMBER_LIFE, maxLife: DAMAGE_NUMBER_LIFE,
+          vx: Math.cos(healAngle) * healSpd, vy: Math.sin(healAngle) * healSpd,
+          color: '#44cc66', isCrit: false
+        })
+      }
+    }
   }
 
   const resolveCollision = (a: BaybladeState, b: BaybladeState) => {
@@ -1007,6 +1064,59 @@ export const useBaybladeGame = () => {
     const aSpeedAdv = (bSpeed > 0 && aSpeed >= bSpeed * 2) ? 0.75 : 1
     const bSpeedAdv = (aSpeed > 0 && bSpeed >= aSpeed * 2) ? 0.75 : 1
 
+    // Thunder arena combo tracking
+    let aComboMul = 1
+    let bComboMul = 1
+    if (arenaType.value === 'thunder') {
+      const comboAngle = (Math.random() - 0.5) * (Math.PI / 3) // 60° cone pointing right
+      const comboSpd = 0.06 + Math.random() * 0.03
+      const now = performance.now()
+      // Update combo for a hitting b (only if a is moving fast enough to attack)
+      if (aSpeed > STOP_THRESHOLD) {
+        const aCombo = comboState.get(a.id)
+        if (aCombo && aCombo.targetId === b.id && now - aCombo.lastTime <= COMBO_WINDOW_MS) {
+          if (now - aCombo.lastTime >= COMBO_GRACE_MS) {
+            aCombo.stacks++
+            aCombo.lastTime = now
+            aComboMul = 1 + aCombo.stacks * 0.1
+            damageNumbers.push({
+              x: cx, y: cy,
+              value: 0, life: DAMAGE_NUMBER_LIFE, maxLife: DAMAGE_NUMBER_LIFE,
+              vx: Math.cos(comboAngle) * comboSpd, vy: Math.sin(comboAngle) * comboSpd,
+              color: '#ffcc22', isCrit: false,
+              comboText: `${aCombo.stacks}x COMBO`
+            })
+          } else {
+            aComboMul = 1 + aCombo.stacks * 0.1
+          }
+        } else {
+          comboState.set(a.id, { targetId: b.id, lastTime: now, stacks: 0 })
+        }
+      }
+      // Update combo for b hitting a (only if b is moving fast enough to attack)
+      if (bSpeed > STOP_THRESHOLD) {
+        const bCombo = comboState.get(b.id)
+        if (bCombo && bCombo.targetId === a.id && now - bCombo.lastTime <= COMBO_WINDOW_MS) {
+          if (now - bCombo.lastTime >= COMBO_GRACE_MS) {
+            bCombo.stacks++
+            bCombo.lastTime = now
+            bComboMul = 1 + bCombo.stacks * 0.1
+            damageNumbers.push({
+              x: cx, y: cy,
+              value: 0, life: DAMAGE_NUMBER_LIFE, maxLife: DAMAGE_NUMBER_LIFE,
+              vx: Math.cos(comboAngle) * comboSpd, vy: Math.sin(comboAngle) * comboSpd,
+              color: '#ffcc22', isCrit: false,
+              comboText: `${bCombo.stacks}x COMBO`
+            })
+          } else {
+            bComboMul = 1 + bCombo.stacks * 0.1
+          }
+        } else {
+          comboState.set(b.id, { targetId: a.id, lastTime: now, stacks: 0 })
+        }
+      }
+    }
+
     // a attacks b
     if (aSpeed > STOP_THRESHOLD && !aHitInBack) {
       const isCrit = bHitInBack
@@ -1016,7 +1126,7 @@ export const useBaybladeGame = () => {
       const atkMul = isCrit ? 1.25 : 1
       const dmg = (aSpeed * aStats.damageMultiplier * atkMul * aStats.totalWeight)
         / (bStats.totalWeight * defMul)
-        * DAMAGE_SCALE * bSpeedAdv
+        * DAMAGE_SCALE * bSpeedAdv * aComboMul
       b.hp = Math.max(0, b.hp - dmg)
       if (b.hp <= 0) hadKill = true
       b.hitFlash = HIT_FLASH_FRAMES
@@ -1031,7 +1141,7 @@ export const useBaybladeGame = () => {
       const atkMul = isCrit ? 1.25 : 1
       const dmg = (bSpeed * bStats.damageMultiplier * atkMul * bStats.totalWeight)
         / (aStats.totalWeight * defMul)
-        * DAMAGE_SCALE * aSpeedAdv
+        * DAMAGE_SCALE * aSpeedAdv * bComboMul
       a.hp = Math.max(0, a.hp - dmg)
       if (a.hp <= 0) hadKill = true
       a.hitFlash = HIT_FLASH_FRAMES
@@ -1192,16 +1302,60 @@ export const useBaybladeGame = () => {
     }
   }
 
+  // Arena theme lookup by type
+  const ARENA_THEMES: Record<ArenaType, {
+    neonColor: string
+    neonRgba: string
+    floorGrad?: [string, string]
+    innerGlowRgba?: string
+    ringColor: string
+    borderWidth: number
+    shadowBlur: number
+  }> = {
+    default: {
+      neonColor: '#4fdfff', neonRgba: 'rgba(79, 223, 255,',
+      ringColor: '#1c2a3d', borderWidth: 4, shadowBlur: 20
+    },
+    boss: {
+      neonColor: '#ff4444', neonRgba: 'rgba(255, 60, 40,',
+      floorGrad: ['#2a1010', '#1a0808'],
+      innerGlowRgba: 'rgba(255, 40, 20,',
+      ringColor: '#3a1515', borderWidth: 5, shadowBlur: 30
+    },
+    lava: {
+      neonColor: '#ff6622', neonRgba: 'rgba(255, 102, 34,',
+      floorGrad: ['#2a1508', '#1a0c04'],
+      innerGlowRgba: 'rgba(255, 80, 20,',
+      ringColor: '#3a2010', borderWidth: 5, shadowBlur: 25
+    },
+    ice: {
+      neonColor: '#88ccff', neonRgba: 'rgba(136, 204, 255,',
+      floorGrad: ['#0e2238', '#081828'],
+      innerGlowRgba: 'rgba(100, 180, 255,',
+      ringColor: '#1e3348', borderWidth: 4, shadowBlur: 28
+    },
+    forest: {
+      neonColor: '#44cc66', neonRgba: 'rgba(68, 204, 102,',
+      floorGrad: ['#0a1a0c', '#061208'],
+      innerGlowRgba: 'rgba(40, 180, 60,',
+      ringColor: '#1a2d1a', borderWidth: 4, shadowBlur: 22
+    },
+    thunder: {
+      neonColor: '#ffcc22', neonRgba: 'rgba(255, 204, 34,',
+      floorGrad: ['#1a1a08', '#12120a'],
+      innerGlowRgba: 'rgba(255, 220, 60,',
+      ringColor: '#2d2a1a', borderWidth: 4, shadowBlur: 25
+    }
+  }
+
   const renderArena = (ctx: CanvasRenderingContext2D) => {
-    const boss = isBossStage.value
-    const neonColor = boss ? '#ff4444' : '#4fdfff'
-    const neonRgba = boss ? 'rgba(255, 60, 40,' : 'rgba(79, 223, 255,'
+    const theme = ARENA_THEMES[arenaType.value]
 
     // Arena floor
-    if (boss) {
+    if (theme.floorGrad) {
       const floorGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, ARENA_RADIUS)
-      floorGrad.addColorStop(0, '#2a1010')
-      floorGrad.addColorStop(1, '#1a0808')
+      floorGrad.addColorStop(0, theme.floorGrad[0])
+      floorGrad.addColorStop(1, theme.floorGrad[1])
       ctx.fillStyle = floorGrad
     } else {
       ctx.fillStyle = '#161b22'
@@ -1210,12 +1364,12 @@ export const useBaybladeGame = () => {
     ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2)
     ctx.fill()
 
-    // Boss: pulsating inner glow
-    if (boss) {
+    // Pulsating inner glow (for themed arenas)
+    if (theme.innerGlowRgba) {
       const pulse = 0.3 + 0.2 * Math.sin(performance.now() * 0.002)
       const innerGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, ARENA_RADIUS * 0.7)
-      innerGlow.addColorStop(0, `rgba(255, 40, 20, ${pulse * 0.15})`)
-      innerGlow.addColorStop(1, 'rgba(255, 40, 20, 0)')
+      innerGlow.addColorStop(0, `${theme.innerGlowRgba} ${pulse * 0.15})`)
+      innerGlow.addColorStop(1, `${theme.innerGlowRgba} 0)`)
       ctx.fillStyle = innerGlow
       ctx.beginPath()
       ctx.arc(0, 0, ARENA_RADIUS * 0.7, 0, Math.PI * 2)
@@ -1224,26 +1378,26 @@ export const useBaybladeGame = () => {
 
     // Outer glow halo
     const glowGrad = ctx.createRadialGradient(0, 0, ARENA_RADIUS - 2, 0, 0, ARENA_RADIUS + 40)
-    glowGrad.addColorStop(0, `${neonRgba} 0.15)`)
-    glowGrad.addColorStop(0.4, `${neonRgba} 0.05)`)
-    glowGrad.addColorStop(1, `${neonRgba} 0)`)
+    glowGrad.addColorStop(0, `${theme.neonRgba} 0.15)`)
+    glowGrad.addColorStop(0.4, `${theme.neonRgba} 0.05)`)
+    glowGrad.addColorStop(1, `${theme.neonRgba} 0)`)
     ctx.fillStyle = glowGrad
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS + 40, 0, Math.PI * 2)
     ctx.fill()
 
     // Neon border
-    ctx.strokeStyle = neonColor
-    ctx.lineWidth = boss ? 5 : 4
-    ctx.shadowColor = neonColor
-    ctx.shadowBlur = boss ? 30 : 20
+    ctx.strokeStyle = theme.neonColor
+    ctx.lineWidth = theme.borderWidth
+    ctx.shadowColor = theme.neonColor
+    ctx.shadowBlur = theme.shadowBlur
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2)
     ctx.stroke()
     ctx.shadowBlur = 0
 
     // Inner rings
-    ctx.strokeStyle = boss ? '#3a1515' : '#1c2a3d'
+    ctx.strokeStyle = theme.ringColor
     ctx.lineWidth = 1
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS * 0.6, 0, Math.PI * 2)
@@ -1251,6 +1405,36 @@ export const useBaybladeGame = () => {
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS * 0.3, 0, Math.PI * 2)
     ctx.stroke()
+
+    // Ice arena: frost rings for distinct visual
+    if (arenaType.value === 'ice') {
+      // Outer frost ring — beyond the border
+      const outerFrost = ctx.createRadialGradient(0, 0, ARENA_RADIUS + 2, 0, 0, ARENA_RADIUS + 18)
+      outerFrost.addColorStop(0, 'rgba(160, 220, 255, 0.25)')
+      outerFrost.addColorStop(0.5, 'rgba(100, 180, 240, 0.1)')
+      outerFrost.addColorStop(1, 'rgba(80, 160, 220, 0)')
+      ctx.fillStyle = outerFrost
+      ctx.beginPath()
+      ctx.arc(0, 0, ARENA_RADIUS + 18, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Inner frost band — darker icy rim inside the border
+      const innerFrost = ctx.createRadialGradient(0, 0, ARENA_RADIUS * 0.82, 0, 0, ARENA_RADIUS - 2)
+      innerFrost.addColorStop(0, 'rgba(60, 130, 180, 0)')
+      innerFrost.addColorStop(0.6, 'rgba(80, 160, 220, 0.08)')
+      innerFrost.addColorStop(1, 'rgba(120, 200, 255, 0.18)')
+      ctx.fillStyle = innerFrost
+      ctx.beginPath()
+      ctx.arc(0, 0, ARENA_RADIUS - 2, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Secondary inner border ring
+      ctx.strokeStyle = 'rgba(140, 210, 255, 0.3)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(0, 0, ARENA_RADIUS - 8, 0, Math.PI * 2)
+      ctx.stroke()
+    }
   }
 
   const renderMeteorShower = (ctx: CanvasRenderingContext2D) => {
@@ -1635,6 +1819,7 @@ export const useBaybladeGame = () => {
     dragForceRatio,
     meteorParticles,
     isBossStage,
+    arenaType,
 
     initGame,
     startMatch,

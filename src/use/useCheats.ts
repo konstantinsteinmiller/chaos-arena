@@ -2,7 +2,8 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import useModels from '@/use/useModels'
 import useUser, { isDemo } from '@/use/useUser'
 import useCampaign, { demoCampaignNodes, type MobileNode } from '@/use/useCampaign'
-import useBaybladeCampaign, { STAGES } from '@/use/useBaybladeCampaign'
+import useBaybladeCampaign, { STAGES, type ArenaType } from '@/use/useBaybladeCampaign'
+import { arenaType } from '@/use/useBaybladeGame'
 import type { GameCard } from '@/types/game'
 
 const storedCheat = localStorage.getItem('cheat') || 'false'
@@ -74,6 +75,11 @@ const useCheats = () => {
     console.warn('[CHEAT] Chest cooldown reset to 00:00.')
   }
 
+  const setArenaType = (type: ArenaType) => {
+    arenaType.value = type
+    console.warn(`[CHEAT] Arena type set to '${type}'.`)
+  }
+
   /** Jump forward/backward by 10 stages */
   const shiftBaybladeStage = (delta: number) => {
     const { currentStageId } = useBaybladeCampaign()
@@ -109,7 +115,7 @@ const useCheats = () => {
     'ctrl+shift+6': () => setBaybladeStage(6),
     'ctrl+shift+7': () => setBaybladeStage(7),
     'ctrl+shift+8': () => setBaybladeStage(8),
-    'ctrl+shift+9': () => setBaybladeStage(9),
+    'ctrl+shift+o': () => setBaybladeStage(9),
     'ctrl+shift+p': () => setBaybladeStage(10),
     'ctrl+shift+alt+1': () => setBaybladeStage(11),
     'ctrl+shift+alt+2': () => setBaybladeStage(12),
@@ -121,7 +127,14 @@ const useCheats = () => {
     'ctrl+shift+alt+8': () => setBaybladeStage(18),
     'ctrl+shift+alt+9': () => setBaybladeStage(19),
     'ctrl+shift+alt+0': () => setBaybladeStage(20),
-    'ctrl+shift+alt+t': resetChestCooldown
+    'ctrl+shift+alt+t': resetChestCooldown,
+    // Arena type shortcuts
+    'ctrl+shift+alt+l': () => setArenaType('lava'),
+    'ctrl+shift+alt+i': () => setArenaType('ice'),
+    'ctrl+shift+alt+f': () => setArenaType('forest'),
+    'ctrl+shift+alt+d': () => setArenaType('default'),
+    'ctrl+shift+alt+b': () => setArenaType('boss'),
+    'ctrl+shift+alt+h': () => setArenaType('thunder')
   }
 
   /**

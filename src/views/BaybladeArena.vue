@@ -16,6 +16,8 @@ import type { BaybladeConfig } from '@/types/bayblade'
 import useUser from '@/use/useUser'
 import IconCoin from '@/components/icons/IconCoin.vue'
 import DailyRewards from '@/components/organisms/DailyRewards.vue'
+import FLogoProgress from '@/components/atoms/FLogoProgress.vue'
+import { prependBaseUrl } from '@/utils/function'
 
 // ─── Game & Config ─────────────────────────────────────────────────────────
 
@@ -334,7 +336,7 @@ watch(isGameOver, (over) => {
 const onRewardContinue = () => {
   showReward.value = false
   coinsAwarded.value = false
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType)
 }
 
 const onOpenConfig = () => {
@@ -343,7 +345,7 @@ const onOpenConfig = () => {
 
 const onConfigSave = (team: BaybladeConfig[]) => {
   saveTeam(team)
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType)
 }
 
 // ─── Lifecycle ─────────────────────────────────────────────────────────────
@@ -364,7 +366,7 @@ onMounted(() => {
   updateCanvasSize()
   window.addEventListener('resize', updateCanvasSize)
 
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType)
   renderRafId = requestAnimationFrame(renderLoop)
 
   updateChestTimer()
@@ -384,6 +386,9 @@ onUnmounted(() => {
     class="bg-[#0d1117]"
     :style="shakeStyle"
   )
+    //- Logo Preloader
+    FLogoProgress
+
     //- Game Canvas
     canvas(
       ref="canvasRef"
@@ -404,14 +409,27 @@ onUnmounted(() => {
         div.flex.items-center.gap-2.rounded-lg.text-white.font-bold(
           :class="[\
             'px-3 py-1.5 text-xs sm:text-sm',\
-            currentStage.isBoss ? 'bg-red-900/90 border border-red-500/50' : 'bg-slate-700/80'\
+            currentStage.isBoss ? 'bg-red-900/90 border border-red-500/50'\
+              : currentStage.arenaType === 'lava' ? 'bg-orange-900/90 border border-orange-500/50'\
+              : currentStage.arenaType === 'ice' ? 'bg-cyan-900/90 border border-cyan-500/50'\
+              : currentStage.arenaType === 'forest' ? 'bg-green-900/90 border border-green-500/50'\
+              : currentStage.arenaType === 'thunder' ? 'bg-yellow-900/90 border border-yellow-500/50'\
+              : 'bg-slate-700/80'\
           ]"
         )
           span.game-text(
             :class="currentStage.isBoss ? 'text-red-300' : ''"
           ) {{ currentStage.isBoss ? 'BOSS' : 'Stage' }} {{ currentStageId }}
           span.game-text(
-            :class="currentStage.isBoss ? 'text-red-400 text-[10px] sm:text-xs' : 'text-slate-400 text-[10px] sm:text-xs'"
+            :class="[\
+              'text-[10px] sm:text-xs',\
+              currentStage.isBoss ? 'text-red-400'\
+                : currentStage.arenaType === 'lava' ? 'text-orange-400'\
+                : currentStage.arenaType === 'ice' ? 'text-cyan-400'\
+                : currentStage.arenaType === 'forest' ? 'text-green-400'\
+                : currentStage.arenaType === 'thunder' ? 'text-yellow-400'\
+                : 'text-slate-400'\
+            ]"
           ) {{ currentStage.name }}
         //- Coin counter + Chest
         div.flex.flex-col.items-end.gap-2
@@ -526,14 +544,14 @@ onUnmounted(() => {
         FIconButton(
           type="secondary"
           size="lg"
-          img-src="/images/icons/gears_128x128.webp"
+          :img-src="prependBaseUrl('/images/icons/gears_128x128.webp')"
           @click="showOptions = true"
         )
         FIconButton(
           v-if="hasFirstWin"
           type="secondary"
           size="lg"
-          img-src="/images/icons/team_128x128.webp"
+          :img-src="prependBaseUrl('/images/icons/team_128x128.webp')"
           @click="onOpenConfig"
         )
 
