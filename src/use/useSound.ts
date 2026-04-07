@@ -44,7 +44,9 @@ export const useMusic = () => {
         isLoaded.value = true
         playWithFade()
       }, { once: true })
-    } else if (bgMusic.value && bgMusic.value?.dataset?.name === 'battle' && route.name !== 'battle') {
+    } else if (bgMusic.value && (bgMusic.value?.dataset?.name === 'battle-3'
+        || bgMusic.value?.dataset?.name === 'battle-2' || bgMusic.value?.dataset?.name === 'battle-1')
+      && route.name !== 'battle') {
       bgMusic.value?.pause()
     }
   }, { deep: true, immediate: true })

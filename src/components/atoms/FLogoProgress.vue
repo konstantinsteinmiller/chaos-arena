@@ -2,7 +2,7 @@
   div(
     ref="logoRef"
     class="fixed z-[100] transition-all ease-in-out"
-    :class="[settled ? 'duration-700 !z-[1]' : 'duration-0 z-[100]',  settled ? 'z-[1]': '']"
+    :class="[settled ? 'duration-700 !z-[1]' : 'duration-0 z-[200]']"
     :style="positionStyle"
   )
     div(class="relative flex flex-col items-center")
@@ -73,7 +73,7 @@ const sizeStyle = computed(() => {
 const positionStyle = computed(() => {
   if (done.value) {
     // Top-left below stage badge (~56px down, 12px left)
-    return { top: '56px', left: '12px', transform: 'none' }
+    return { top: '52px', left: '12px', transform: 'none' }
   }
   // Centered
   return {

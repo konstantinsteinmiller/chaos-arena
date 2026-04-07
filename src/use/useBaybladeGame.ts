@@ -16,6 +16,7 @@ import { isDebug } from '@/use/useMatch.ts'
 import { isMobileLandscape, isMobilePortrait } from '@/use/useUser.ts'
 import { useScreenshake } from '@/use/useScreenshake'
 import useSounds from '@/use/useSound'
+import { prependBaseUrl } from '@/utils/function.ts'
 
 const { triggerShake } = useScreenshake()
 const { playSound } = useSounds()
@@ -159,7 +160,7 @@ export const useBaybladeGame = () => {
   let physicsRafId: number | null = null
 
   // ── Spark VFX ───────────────────────────────────────────────────────────
-  const sparkImage = preloadImage('/images/vfx/big-spark_1280x256.webp')
+  const sparkImage = preloadImage(prependBaseUrl('images/vfx/big-spark_1280x256.webp'))
   const activeSparks: SpritesheetAnimation[] = []
   const sparkCooldowns = new Map<string, number>() // "a_b" -> last spawn timestamp
   const clashSoundCooldowns = new Map<string, number>()

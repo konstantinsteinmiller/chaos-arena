@@ -15,7 +15,7 @@ useCheats()
 const { resourceCache } = useAssets()
 
 
-initMusic('adventure_main-menu.mp3')
+initMusic('battle-1.ogg')
 
 const portraitQuery = window.matchMedia('(orientation: portrait)')
 const onTouchStart = (event: any) => {

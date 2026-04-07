@@ -544,14 +544,14 @@ onUnmounted(() => {
         FIconButton(
           type="secondary"
           size="lg"
-          :img-src="prependBaseUrl('/images/icons/gears_128x128.webp')"
+          :img-src="prependBaseUrl('images/icons/gears_128x128.webp')"
           @click="showOptions = true"
         )
         FIconButton(
           v-if="hasFirstWin"
           type="secondary"
           size="lg"
-          :img-src="prependBaseUrl('/images/icons/team_128x128.webp')"
+          :img-src="prependBaseUrl('images/icons/team_128x128.webp')"
           @click="onOpenConfig"
         )
 
