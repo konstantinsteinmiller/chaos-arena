@@ -69,6 +69,11 @@ const useCheats = () => {
     console.warn(`[CHEAT] Bayblade stage set to ${stageId} (${STAGES[stageId - 1]?.name}).`)
   }
 
+  const resetChestCooldown = () => {
+    localStorage.setItem('bayblade_chest_ready_at', '0')
+    console.warn('[CHEAT] Chest cooldown reset to 00:00.')
+  }
+
   /** Jump forward/backward by 10 stages */
   const shiftBaybladeStage = (delta: number) => {
     const { currentStageId } = useBaybladeCampaign()
@@ -115,7 +120,8 @@ const useCheats = () => {
     'ctrl+shift+alt+7': () => setBaybladeStage(17),
     'ctrl+shift+alt+8': () => setBaybladeStage(18),
     'ctrl+shift+alt+9': () => setBaybladeStage(19),
-    'ctrl+shift+alt+0': () => setBaybladeStage(20)
+    'ctrl+shift+alt+0': () => setBaybladeStage(20),
+    'ctrl+shift+alt+t': resetChestCooldown
   }
 
   /**

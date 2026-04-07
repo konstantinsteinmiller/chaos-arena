@@ -60,9 +60,9 @@ export const STAGES: Stage[] = [
     rewardWin: 110, rewardLose: 35
   },
   {
-    id: 5, name: 'The Iron Titan', isBoss: true,
+    id: 5, name: 'The Storm Warlord', isBoss: true,
     enemyTeam: [
-      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 3, modelId: 'castle', isBoss: true }
+      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 5, bottomLevel: 5, modelId: 'thunderstorm', isBoss: true }
     ],
     rewardWin: 200, rewardLose: 50
   },
@@ -103,9 +103,9 @@ export const STAGES: Stage[] = [
     rewardWin: 200, rewardLose: 60
   },
   {
-    id: 10, name: 'The Storm Warlord', isBoss: true,
+    id: 10, name: 'The Iron Titan', isBoss: true,
     enemyTeam: [
-      { topPartId: 'star', bottomPartId: 'speedy', topLevel: 5, bottomLevel: 5, modelId: 'thunderstorm', isBoss: true }
+      { topPartId: 'cushioned', bottomPartId: 'tanky', topLevel: 3, bottomLevel: 3, modelId: 'castle', isBoss: true }
     ],
     rewardWin: 350, rewardLose: 90
   },

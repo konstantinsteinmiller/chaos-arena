@@ -1003,6 +1003,10 @@ export const useBaybladeGame = () => {
     let hadCrit = false
     let hadKill = false
 
+    // Speed advantage: reduce counter damage by 25% if attacker is 2x+ faster
+    const aSpeedAdv = (bSpeed > 0 && aSpeed >= bSpeed * 2) ? 0.75 : 1
+    const bSpeedAdv = (aSpeed > 0 && bSpeed >= aSpeed * 2) ? 0.75 : 1
+
     // a attacks b
     if (aSpeed > STOP_THRESHOLD && !aHitInBack) {
       const isCrit = bHitInBack
@@ -1012,7 +1016,7 @@ export const useBaybladeGame = () => {
       const atkMul = isCrit ? 1.25 : 1
       const dmg = (aSpeed * aStats.damageMultiplier * atkMul * aStats.totalWeight)
         / (bStats.totalWeight * defMul)
-        * DAMAGE_SCALE
+        * DAMAGE_SCALE * bSpeedAdv
       b.hp = Math.max(0, b.hp - dmg)
       if (b.hp <= 0) hadKill = true
       b.hitFlash = HIT_FLASH_FRAMES
@@ -1027,7 +1031,7 @@ export const useBaybladeGame = () => {
       const atkMul = isCrit ? 1.25 : 1
       const dmg = (bSpeed * bStats.damageMultiplier * atkMul * bStats.totalWeight)
         / (aStats.totalWeight * defMul)
-        * DAMAGE_SCALE
+        * DAMAGE_SCALE * aSpeedAdv
       a.hp = Math.max(0, a.hp - dmg)
       if (a.hp <= 0) hadKill = true
       a.hitFlash = HIT_FLASH_FRAMES
