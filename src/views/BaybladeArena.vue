@@ -7,7 +7,7 @@ import FReward from '@/components/atoms/FReward'
 import BaybladeConfigModal from '@/components/organisms/BaybladeConfigModal'
 import OptionsModal from '@/components/organisms/OptionsModal'
 import useSounds from '@/use/useSound'
-import useBaybladeGame, { BLADE_RADIUS } from '@/use/useBaybladeGame'
+import useBaybladeGame, { BLADE_RADIUS, simSpeed } from '@/use/useBaybladeGame'
 import useBaybladeConfig from '@/use/useBaybladeConfig'
 import useBaybladeCampaign from '@/use/useBaybladeCampaign'
 import { useHint } from '@/use/useHint'
@@ -16,8 +16,15 @@ import type { BaybladeConfig } from '@/types/bayblade'
 import useUser, { isMobileLandscape, isMobilePortrait } from '@/use/useUser'
 import IconCoin from '@/components/icons/IconCoin.vue'
 import DailyRewards from '@/components/organisms/DailyRewards.vue'
+import TreasureChest from '@/components/organisms/TreasureChest.vue'
+import AdRewardButton from '@/components/organisms/AdRewardButton.vue'
+import CoinBadge from '@/components/organisms/CoinBadge.vue'
 import FLogoProgress from '@/components/atoms/FLogoProgress.vue'
 import { prependBaseUrl } from '@/utils/function'
+import FMuteButton from '@/components/atoms/FMuteButton.vue'
+import FButtonSwitch from '@/components/atoms/FButtonSwitch.vue'
+import StageBadge from '@/components/StageBadge.vue'
+import { isCrazySDKIntegrated } from '@/use/useMatch.ts'
 
 // ─── Game & Config ─────────────────────────────────────────────────────────
 
@@ -40,7 +47,7 @@ const {
   spawnMeteorShower
 } = useBaybladeGame()
 
-const { playerTeam, coins, hasFirstWin, saveTeam, addCoins, markFirstWin } = useBaybladeConfig()
+const { playerTeam, hasFirstWin, saveTeam, addCoins, markFirstWin } = useBaybladeConfig()
 const { currentStage, currentStageId, isLastStage, playerUpgrades, advanceStage } = useBaybladeCampaign()
 const { showHint, startHintTimer, clearHint } = useHint(5000)
 const { shakeStyle } = useScreenshake()
@@ -57,7 +64,6 @@ const canvasWidth: Ref<number> = ref(0)
 const canvasHeight: Ref<number> = ref(0)
 const configModalOpen: Ref<boolean> = ref(false)
 const showOptions: Ref<boolean> = ref(false)
-const showDailyRewards: Ref<boolean> = ref(false)
 const coinsAwarded: Ref<boolean> = ref(false)
 
 // ─── NPC Team from Campaign Stage ─────────────────────────────────────────
@@ -112,141 +118,55 @@ const showConfigButton = computed(() =>
 
 const adRewardCoins = 100
 
-// ─── Treasure Chest Cooldown ──────────────────────────────────────────────
+// ─── 2x Simulation Speed Boost ────────────────────────────────────────────
 
-const CHEST_COOLDOWN_MS = 10 * 60 * 1000
-const CHEST_KEY = 'bayblade_chest_ready_at'
-const CHEST_REWARD = 100
+// Players can watch a rewarded video to unlock a temporary 2x speed-up.
+// The boost is purely visual — physics integration runs twice per frame
+// while active, so collisions and damage are unaffected.
+const SPEED_BOOST_KEY = 'bayblade_2x_expires_at'
+const SPEED_BOOST_DURATION_MS = 3 * 60 * 1000
 
-const chestReadyAt = ref(parseInt(localStorage.getItem(CHEST_KEY) || '0', 10))
-const chestRemaining = ref(0)
-let chestIntervalId: number | null = null
+const speedBoostExpiresAt: Ref<number> = ref(parseInt(localStorage.getItem(SPEED_BOOST_KEY) || '0', 10))
+const speedNow: Ref<number> = ref(Date.now())
 
-const chestReady = computed(() => chestRemaining.value <= 0)
+const is2xAvailable = computed(() => speedNow.value < speedBoostExpiresAt.value)
 
-const updateChestTimer = () => {
-  // Re-read from localStorage so external resets (cheats) are picked up
-  chestReadyAt.value = parseInt(localStorage.getItem(CHEST_KEY) || '0', 10)
-  const now = Date.now()
-  chestRemaining.value = Math.max(0, chestReadyAt.value - now)
-}
-
-const chestTimeDisplay = computed(() => {
-  const totalSec = Math.ceil(chestRemaining.value / 1000)
-  const m = Math.floor(totalSec / 60)
-  const s = totalSec % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-})
-
-const chestCooldownPct = computed(() =>
-  chestRemaining.value / CHEST_COOLDOWN_MS
-)
-
-// ─── Coin Explosion VFX ───────────────────────────────────────────────────
-
-const coinBadgeRef = ref<HTMLElement | null>(null)
-const chestRef = ref<HTMLElement | null>(null)
-
-const COIN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="width:20px;height:20px"><circle cx="12" cy="12" r="11" fill="black"/><circle cx="12" cy="12" r="10" fill="#fde047"/><text x="12" y="18" text-anchor="middle" font-size="16" font-weight="bold" fill="#2f920e">$</text></svg>'
-
-const spawnCoinExplosion = () => {
-  const chestEl = chestRef.value
-  const badgeEl = coinBadgeRef.value
-  if (!chestEl || !badgeEl) return
-
-  const chestRect = chestEl.getBoundingClientRect()
-  const cx = chestRect.left + chestRect.width / 2
-  const cy = chestRect.top + chestRect.height / 2
-
-  const count = 20
-  const els: HTMLDivElement[] = []
-  const angles: number[] = []
-  const distances: number[] = []
-  const staggerDelays: number[] = []
-
-  const container = document.getElementById('app') || document.body
-
-  for (let i = 0; i < count; i++) {
-    const el = document.createElement('div')
-    el.innerHTML = COIN_SVG
-    el.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:100;will-change:transform,opacity;'
-    el.style.transform = `translate(${cx - 10}px,${cy - 10}px)`
-    container.appendChild(el)
-    els.push(el)
-    angles.push(Math.random() * Math.PI * 2)
-    distances.push(40 + Math.random() * 80)
-    staggerDelays.push(Math.random() * 300)
+const updateSpeedBoost = () => {
+  speedNow.value = Date.now()
+  // Auto-revert to 1x once the boost runs out
+  if (simSpeed.value === 2 && speedNow.value >= speedBoostExpiresAt.value) {
+    simSpeed.value = 1
   }
+}
 
-  const startTime = performance.now()
-  const explodeDuration = 600
-  const flyDuration = 500
-
-  let flyStartPositions: { x: number; y: number }[] | null = null
-  let tx = 0
-  let ty = 0
-
-  const animate = (now: number) => {
-    const elapsed = now - startTime
-
-    if (elapsed < explodeDuration) {
-      const progress = elapsed / explodeDuration
-      for (let i = 0; i < count; i++) {
-        const x = cx - 10 + Math.cos(angles[i]!) * distances[i]! * progress
-        const y = cy - 10 + Math.sin(angles[i]!) * distances[i]! * progress
-        els[i]!.style.transform = `translate(${x}px,${y}px)`
-      }
-      requestAnimationFrame(animate)
-    } else {
-      if (!flyStartPositions) {
-        const badgeRect = badgeEl.getBoundingClientRect()
-        flyStartPositions = els.map((_, i) => ({
-          x: cx - 10 + Math.cos(angles[i]!) * distances[i]!,
-          y: cy - 10 + Math.sin(angles[i]!) * distances[i]!
-        }))
-        tx = badgeRect.left + badgeRect.width / 2 - 10
-        ty = badgeRect.top + badgeRect.height / 2 - 10
-      }
-
-      const flyElapsed = elapsed - explodeDuration
-      let allDone = true
-
-      for (let i = 0; i < count; i++) {
-        const localElapsed = flyElapsed - staggerDelays[i]!
-        if (localElapsed < 0) {
-          allDone = false
-          continue
-        }
-        const t = Math.min(1, localElapsed / flyDuration)
-        const ease = t * t
-        const sx = flyStartPositions[i]!.x
-        const sy = flyStartPositions[i]!.y
-        const x = sx + (tx - sx) * ease
-        const y = sy + (ty - sy) * ease
-        els[i]!.style.transform = `translate(${x}px,${y}px)`
-        els[i]!.style.opacity = String(1 - ease)
-        if (t < 1) allDone = false
-      }
-
-      if (!allDone) {
-        requestAnimationFrame(animate)
-      } else {
-        for (const el of els) el.remove()
-      }
-    }
+const onSpeedSwitchClick = (value: 1 | 2) => {
+  if (value === 1) {
+    simSpeed.value = 1
+    return
   }
-  requestAnimationFrame(animate)
+  if (is2xAvailable.value) {
+    simSpeed.value = 2
+    return
+  }
+  triggerSpeedBoostAd()
 }
 
-const collectChest = () => {
-  if (!chestReady.value) return
-  addCoins(CHEST_REWARD)
-  spawnCoinExplosion()
-  chestReadyAt.value = Date.now() + CHEST_COOLDOWN_MS
-  localStorage.setItem(CHEST_KEY, chestReadyAt.value.toString())
-  updateChestTimer()
+// Triggers the rewarded video ad. Stub: integrate the ad SDK here.
+// On successful video completion, call the snippet documented below to
+// unlock 2x for SPEED_BOOST_DURATION_MS:
+//   speedBoostExpiresAt.value = Date.now() + SPEED_BOOST_DURATION_MS
+//   localStorage.setItem(SPEED_BOOST_KEY, String(speedBoostExpiresAt.value))
+//   simSpeed.value = 2
+const triggerSpeedBoostAd = () => {
+  // TODO: integrate rewarded video ad SDK
 }
 
+// Reference to the CoinBadge component — TreasureChest reads its `rootEl`
+// for the fly-to-badge VFX target.
+const coinBadgeRef = ref<{ rootEl: HTMLElement | null } | null>(null)
+const coinBadgeEl = computed(() => coinBadgeRef.value?.rootEl ?? null)
+
+let speedBoostIntervalId: number | null = null
 
 // ─── Canvas Sizing ─────────────────────────────────────────────────────────
 
@@ -369,15 +289,17 @@ onMounted(() => {
   initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType)
   renderRafId = requestAnimationFrame(renderLoop)
 
-  updateChestTimer()
-  chestIntervalId = window.setInterval(updateChestTimer, 1000)
+  updateSpeedBoost()
+  speedBoostIntervalId = window.setInterval(updateSpeedBoost, 1000)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateCanvasSize)
   stopPhysics()
   if (renderRafId !== null) cancelAnimationFrame(renderRafId)
-  if (chestIntervalId !== null) clearInterval(chestIntervalId)
+  if (speedBoostIntervalId !== null) clearInterval(speedBoostIntervalId)
+  // Always leave the arena at normal speed so other views aren't affected
+  simSpeed.value = 1
 })
 </script>
 
@@ -404,68 +326,19 @@ onUnmounted(() => {
     div.absolute.inset-0.pointer-events-none
 
       //- Top bar: stage + coins
-      div.flex.justify-between.items-start.p-3(class="sm:p-4")
-        //- Stage indicator
-        div.flex.items-center.gap-2.rounded-lg.text-white.font-bold(
-          :class="[\
-            'px-3 py-1.5 text-xs sm:text-sm',\
-            currentStage.isBoss ? 'bg-red-900/90 border border-red-500/50'\
-              : currentStage.arenaType === 'lava' ? 'bg-orange-900/90 border border-orange-500/50'\
-              : currentStage.arenaType === 'ice' ? 'bg-cyan-900/90 border border-cyan-500/50'\
-              : currentStage.arenaType === 'forest' ? 'bg-green-900/90 border border-green-500/50'\
-              : currentStage.arenaType === 'thunder' ? 'bg-yellow-900/90 border border-yellow-500/50'\
-              : 'bg-slate-700/80'\
-          ]"
+      div.flex.justify-between.items-start(class="p-2 sm:p-2")
+        //- Stage indicator (fancy themed badge)
+        StageBadge(
+          :stage-id="currentStageId"
+          :name="currentStage.name"
+          :is-boss="currentStage.isBoss"
+          :arena-type="currentStage.arenaType"
         )
-          span.game-text(
-            :class="currentStage.isBoss ? 'text-red-300' : ''"
-          ) {{ currentStage.isBoss ? 'BOSS' : 'Stage' }} {{ currentStageId }}
-          span.game-text(
-            :class="[\
-              'text-[10px] sm:text-xs',\
-              currentStage.isBoss ? 'text-red-400'\
-                : currentStage.arenaType === 'lava' ? 'text-orange-400'\
-                : currentStage.arenaType === 'ice' ? 'text-cyan-400'\
-                : currentStage.arenaType === 'forest' ? 'text-green-400'\
-                : currentStage.arenaType === 'thunder' ? 'text-yellow-400'\
-                : 'text-slate-400'\
-            ]"
-          ) {{ currentStage.name }}
         //- Coin counter + Chest
         div.flex.flex-col.items-end.gap-2
-          div.flex.items-center.gap-2.rounded-lg.text-white.font-bold(
-            ref="coinBadgeRef"
-            class="px-3 py-1.5 bg-yellow-600/80 text-sm sm:text-base"
-          )
-            IconCoin(class="w-5 h-5 text-yellow-300")
-            span.game-text {{ coins }}
-          //- Treasure chest
-          div.flex.flex-col.items-center.pointer-events-auto(
-            @click="collectChest"
-            :class="chestReady ? 'cursor-pointer animate-pulse' : ''"
-          )
-            div.relative(ref="chestRef" class="w-10 h-10 sm:w-12 sm:h-12")
-              img.object-contain.w-full.h-full(
-                src="/images/icons/chest_128x128.webp"
-                :class="chestReady ? 'drop-shadow-[0_0_8px_rgba(255,200,0,0.8)]' : ''"
-              )
-              //- Circular cooldown overlay
-              svg.absolute.inset-0.w-full.h-full(
-                v-if="!chestReady"
-                viewBox="0 0 40 40"
-                style="transform: rotate(-90deg) scaleX(-1)"
-              )
-                circle(
-                  cx="20" cy="20" r="19"
-                  fill="none"
-                  stroke="rgba(0,0,0,0.55)"
-                  stroke-width="40"
-                  :stroke-dasharray="119.38"
-                  :stroke-dashoffset="119.38 * (1 - chestCooldownPct)"
-                )
-            span.game-text.text-white.font-bold(
-              class="text-[10px] sm:text-xs"
-            ) {{ chestTimeDisplay }}
+          CoinBadge(ref="coinBadgeRef")
+          //- Treasure chest (cooldown + collect logic + VFX, fully self-contained)
+          TreasureChest(:target-el="coinBadgeEl")
 
       //- Center overlay messages
       div.absolute.flex.items-center.justify-center(class="inset-0 z-[10]")
@@ -499,61 +372,52 @@ onUnmounted(() => {
           div.text-white.italic.game-text(class="text-xs sm:text-sm opacity-50")
             | Tap a blade, then drag to launch
 
-      //- Bottom-left daily rewards button
-      div(
-        v-if="showConfigButton && !showReward && currentStageId >= 3"
-        class="fixed bottom-4 left-4 sm:bottom-6 sm:left-6 pointer-events-auto z-50"
-        :style="{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }"
-      )
-        button.group.cursor-pointer.z-10.transition-transform(
-          class="hover:scale-[103%] active:scale-90 scale-80 sm:scale-110"
-          @click="showDailyRewards = true"
-        )
-          div.relative
-            div.absolute.inset-0.translate-y-1.rounded-lg(class="bg-[#1a2b4b]")
-            div.relative.rounded-lg.border-2.text-white.font-bold.flex.flex-col.items-center.px-3.py-1(
-              class="bg-gradient-to-b from-[#ffcd00] to-[#f7a000] border-[#0f1a30]"
-            )
-              span.font-black.game-text.leading-tight(class="text-[10px] sm:text-xs") +100
-              IconCoin(class="w-5 h-5 text-yellow-300")
+      //- Bottom-left daily rewards (button + modal, fully self-contained)
+      DailyRewards(v-if="showConfigButton && !showReward && currentStageId >= 3")
+      FMuteButton(v-if="showConfigButton" class="left-2 sm:left-4").fixed.bottom-18
 
       //- Bottom-right buttons (always visible when not in reward overlay)
       div(
         v-if="showConfigButton && !showReward"
-        class="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 pointer-events-auto z-50 flex gap-2 items-end"
+        class="fixed bottom-2 right-2 sm:bottom-3 sm:right-3 pointer-events-auto z-50 flex gap-2 items-end"
         :style="{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }"
       )
-        //- Ad reward button
-        button.group.cursor-pointer.z-10.transition-transform(
+        //- Ad reward button (rewarded video → coins, fully self-contained)
+        AdRewardButton(
           v-if="currentStageId >= 3"
-          class="hover:scale-[103%] active:scale-90 scale-80 sm:scale-110"
+          :coins="adRewardCoins"
         )
-          div.relative
-            div.absolute.inset-0.translate-y-1.rounded-lg(class="bg-[#1a2b4b]")
-            div.relative.rounded-lg.border-2.text-white.font-bold.flex.flex-col.items-center.px-2.py-1(
-              class="bg-gradient-to-b from-[#ffcd00] to-[#f7a000] border-[#0f1a30]"
-            )
-              div.flex.items-center.gap-1
-                span.font-black.game-text.leading-tight(class="text-[10px] sm:text-xs") +{{ adRewardCoins }}
-                IconCoin.inline(class="w-4 h-4 text-yellow-300")
-              img.object-contain(
-                src="/images/icons/movie_128x96.webp"
-                class="h-7 w-7 sm:h-8 sm:w-8"
-              )
 
         FIconButton(
           type="secondary"
-          size="lg"
+          size="md"
           :img-src="prependBaseUrl('images/icons/gears_128x128.webp')"
           @click="showOptions = true"
         )
-        FIconButton(
-          v-if="hasFirstWin || currentStageId >= 2"
-          type="secondary"
-          size="lg"
-          :img-src="prependBaseUrl('images/icons/team_128x128.webp')"
-          @click="onOpenConfig"
-        )
+        //- Speed switch (above team config) + team config button column
+        div.flex.flex-col.items-center.gap-2
+          FButtonSwitch.speedup-switch.scale-90(
+            v-if="isCrazySDKIntegrated"
+            class="sm:scale-100"
+            :model-value="simSpeed"
+            :options="[{ value: 1 }, { value: 2 }]"
+            @click="onSpeedSwitchClick"
+          )
+            template(#default="{ option }") {{ option.value }}x
+            template(#hint="{ option }")
+              //- Movie hint icon — only under the 2x button when boost not yet earned
+              img.absolute.object-contain.pointer-events-none(
+                v-if="option.value === 2 && simSpeed === 1 && !is2xAvailable"
+                src="/images/icons/movie_128x96.webp"
+                class="right-0 top-1/2 -translate-y-[50%] h-3 w-3 mr-1.5"
+              )
+          FIconButton(
+            v-if="hasFirstWin || currentStageId >= 2"
+            type="secondary"
+            size="md"
+            :img-src="prependBaseUrl('images/icons/team_128x128.webp')"
+            @click="onOpenConfig"
+          )
 
     //- Reward Overlay
     FReward(
@@ -585,20 +449,20 @@ onUnmounted(() => {
       @save="onConfigSave"
     )
 
-    //- Daily Rewards Modal
-    DailyRewards(
-      v-model="showDailyRewards"
-    )
 
 </template>
 
 <style scoped lang="sass">
+.speedup-switch
+  :deep(.button-wrap:last-of-type button)
+    margin-right: 0.5rem
+
 .animate-pulse
   animation: pulse 2s ease-in-out infinite
-
 @keyframes pulse
   0%, 100%
     opacity: 1
   50%
     opacity: 0.5
+
 </style>

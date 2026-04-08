@@ -8,7 +8,8 @@
       "Bash(xargs wc:*)",
       "Bash(npx sharp-cli:*)",
       "Bash(python3 -c \"from PIL import Image; img=Image.open\\('public/images/vfx/big-spark_256x1080.webp'\\); print\\(img.size\\)\")",
-      "Bash(grep -n \"computeStats\" \"/c/Users/konst/chaos-arena/src/use/\"*.ts)"
+      "Bash(grep -n \"computeStats\" \"/c/Users/konst/chaos-arena/src/use/\"*.ts)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

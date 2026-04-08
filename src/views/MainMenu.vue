@@ -7,15 +7,7 @@
 
     // UI Bottom Right (Mute + Version)
     div.absolute.bottom-2.right-2.flex.flex-col.items-end.gap-1
-      // Mute Toggle Button
-      button.p-2.rounded-full.backdrop-blur-sm.transition-all.cursor-pointer(
-        v-if="!mobileCheck()"
-        class="bg-black/20 hover:bg-black/40 active:scale-95 pointer-events-auto"
-        @click="toggleMute"
-      )
-        span.text-2xl(v-if="isMuted") 🔇
-        span.text-2xl(v-else) 🔊
-
+      FMuteButton.mb-2
       div.text-xs.text-slate-200.opacity-70.text-shadow {{ isCrazyWeb && false ? 'crazy:': ''}} {{ isNative && false ? 'native:': ''}} v.{{ version }}{{ isDemo ? '-demo': ''}}
 
     // Menu box
@@ -45,6 +37,7 @@ import useUser, { version, isDemo, isNative, isCrazyWeb } from '@/use/useUser'
 import { mobileCheck } from '@/utils/function'
 import FLogoProgress from '@/components/atoms/FLogoProgress'
 import useAssets from '@/use/useAssets'
+import FMuteButton from '@/components/atoms/FMuteButton.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -53,34 +46,9 @@ const { loadingProgress } = useAssets()
 
 const showOptions = ref(false)
 
-// Logic to determine if muted based on current volumes
-const isMuted = computed(() => userMusicVolume.value === 0 && userSoundVolume.value === 0)
-
-// Store previous volumes to restore them when unmuting
-const prevMusicVol = ref(userMusicVolume.value || 0.5)
-const prevSoundVol = ref(userSoundVolume.value || 0.7)
-
-onMounted(() => {
-})
-
-const toggleMute = () => {
-  if (!isMuted.value) {
-    // Save current values before muting
-    prevMusicVol.value = userMusicVolume.value
-    prevSoundVol.value = userSoundVolume.value
-    // Mute
-    setSettingValue('music', 0)
-    setSettingValue('sound', 0)
-  } else {
-    // Restore previous values (or defaults if previous was somehow 0)
-    setSettingValue('music', prevMusicVol.value || 0.5)
-    setSettingValue('sound', prevSoundVol.value || 0.7)
-  }
-}
-
 const onCampaign = () => {
   if (loadingProgress.value < 100) return
-  router.push({ name: 'match' })
+  router.push({ name: 'battle' })
 }
 
 const handleExit = () => {

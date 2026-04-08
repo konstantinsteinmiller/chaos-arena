@@ -5,16 +5,7 @@ import FIconButton from '@/components/atoms/FIconButton.vue'
 import IconCoin from '@/components/icons/IconCoin.vue'
 import useBaybladeConfig from '@/use/useBaybladeConfig'
 
-interface Props {
-  modelValue: boolean
-}
-
-const props = defineProps<Props>()
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: boolean): void
-}>()
-
-const { coins, addCoins } = useBaybladeConfig()
+const { addCoins } = useBaybladeConfig()
 
 // ─── Daily Rewards Config ────────────────────────────────────────────────────
 
@@ -55,9 +46,10 @@ const yesterdayStr = () => {
 // ─── Reactive State ──────────────────────────────────────────────────────────
 
 const state = ref<DailyState>(loadState())
+const isModalOpen = ref(false)
 
-// Check for streak break on open
-watch(() => props.modelValue, (open) => {
+// Re-evaluate streak break whenever the modal opens
+watch(isModalOpen, (open) => {
   if (!open) return
   const s = loadState()
   const today = todayStr()
@@ -70,9 +62,13 @@ watch(() => props.modelValue, (open) => {
     saveState(s)
   }
   state.value = s
-}, { immediate: true })
+})
 
 const collectedToday = computed(() => state.value.lastCollected === todayStr())
+
+// True whenever there is a reward ready to collect (drives the bouncing hint
+// on the open-modal button).
+const hasDailyRewardReady = computed(() => !collectedToday.value)
 
 const collect = (dayIndex: number) => {
   if (dayIndex !== state.value.currentDay) return
@@ -89,9 +85,27 @@ const collect = (dayIndex: number) => {
 </script>
 
 <template lang="pug">
+  //- Bottom-left open-modal button
+  div.daily-rewards.fixed.bottom-2.left-2(
+    class="sm:bottom-3 sm:left-3 pointer-events-auto z-50"
+    :style="{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }"
+  )
+    button.group.cursor-pointer.z-10.transition-transform(
+      class="hover:scale-[103%] active:scale-90 scale-80 sm:scale-110"
+      :class="{ 'hint-bounce': hasDailyRewardReady }"
+      @click="isModalOpen = true"
+    )
+      div.relative
+        div.absolute.inset-0.translate-y-1.rounded-lg(class="bg-[#1a2b4b]")
+        div.relative.rounded-lg.border-2.text-white.font-bold.flex.flex-col.items-center.px-3.py-1(
+          class="bg-gradient-to-b from-[#ffcd00] to-[#f7a000] border-[#0f1a30]"
+        )
+          span.font-black.game-text.leading-tight(class="text-[10px] sm:text-xs") +100
+          IconCoin(class="w-5 h-5 text-yellow-300")
+
+  //- Daily Rewards Modal
   FModal(
-    :model-value="modelValue"
-    @update:model-value="emit('update:modelValue', $event)"
+    v-model="isModalOpen"
     :is-closable="true"
     title="Daily Rewards"
   )

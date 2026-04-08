@@ -98,6 +98,29 @@ function renderSpritesheetAnim(ctx: CanvasRenderingContext2D, anim: SpritesheetA
 const arenaType: Ref<ArenaType> = ref('default')
 export { arenaType }
 
+// ─── Simulation Speed (visual speed-up only) ────────────────────────────────
+
+// Module-level so the speed setting persists across composable instances and
+// can be controlled from anywhere in the UI. Damage is unaffected: we simply
+// run the deterministic physics step N times per rendered frame.
+export const simSpeed: Ref<1 | 2> = ref(1)
+
+// ─── Persistent Cross-Match State ────────────────────────────────────────────
+
+// Tracks the result of the last finished match so we can bias the next match's
+// turn order toward whichever side gives the player a better experience.
+const LAST_RESULT_KEY = 'bayblade_last_result'
+const loadLastResult = (): GameResult => {
+  const raw = localStorage.getItem(LAST_RESULT_KEY)
+  return raw === 'win' || raw === 'lose' ? raw : null
+}
+const lastGameResult: Ref<GameResult> = ref(loadLastResult())
+const saveLastGameResult = (result: GameResult) => {
+  lastGameResult.value = result
+  if (result) localStorage.setItem(LAST_RESULT_KEY, result)
+  else localStorage.removeItem(LAST_RESULT_KEY)
+}
+
 // ─── Composable ──────────────────────────────────────────────────────────────
 
 export const useBaybladeGame = () => {
@@ -471,6 +494,14 @@ export const useBaybladeGame = () => {
 
     // Trigger meteor shower intro
     spawnMeteorShower(80, 50, 65)
+
+    try {
+      const randomInt = Math.min(Math.floor(Math.random() * 2) + 1, 2)
+      const audioName = `celebration-${randomInt}`
+      playSound(audioName)
+    } catch (e: any) {
+    }
+
     phase.value = 'meteor_intro'
     meteorIntroTimer = 0
     startPhysics()
@@ -759,7 +790,13 @@ export const useBaybladeGame = () => {
       meteorIntroTimer += 16
       if (meteorIntroTimer >= 1600) {
         phase.value = 'deciding_turn'
-        const startsWithPlayer = Math.random() > 0.5
+        // Bias the starting turn based on the previous match outcome:
+        // - After a loss (or losing streak), give the player an 80% chance to start
+        //   so they have a better shot at recovering.
+        // - After a win or before any match has been played, the enemy starts 70% of
+        //   the time so wins feel earned rather than handed out.
+        const playerStartChance = lastGameResult.value === 'lose' ? 0.80 : 0.30
+        const startsWithPlayer = Math.random() < playerStartChance
         turnAnnouncement.value = startsWithPlayer ? 'YOUR TURN' : 'NPC TURN'
         setTimeout(() => {
           phase.value = startsWithPlayer ? 'player_turn' : 'npc_turn'
@@ -882,6 +919,7 @@ export const useBaybladeGame = () => {
 
     if ((playerAlive === 0 || npcAlive === 0) && !gameResult.value) {
       gameResult.value = npcAlive === 0 ? 'win' : 'lose'
+      saveLastGameResult(gameResult.value)
       // Grace period so final spark VFX can finish playing
       setTimeout(() => {
         phase.value = 'game_over'
@@ -1178,7 +1216,11 @@ export const useBaybladeGame = () => {
 
   const startPhysics = () => {
     const loop = () => {
-      updatePhysics()
+      // Run the physics step `simSpeed` times per rendered frame for a purely
+      // visual speed-up. The integration is deterministic at fixed step size,
+      // so collision impulses and damage are identical regardless of speed.
+      const steps = simSpeed.value
+      for (let i = 0; i < steps; i++) updatePhysics()
       if (physicsRafId !== null) {
         physicsRafId = requestAnimationFrame(loop)
       }

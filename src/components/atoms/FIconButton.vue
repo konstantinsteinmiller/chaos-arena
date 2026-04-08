@@ -55,12 +55,12 @@ const theme = computed(() => {
 const sizeClasses = computed(() => {
   switch (props.size) {
     case 'sm':
-      return { btn: 'p-1.5', icon: 'h-4 w-4', img: 'h-5 w-5', scale: 'scale-60 sm:scale-80' }
+      return { btn: 'p-1.5', icon: 'h-4 w-4', img: 'h-5 w-5', scale: 'scale-70 sm:scale-80' }
     case 'lg':
       return { btn: 'p-3', icon: 'h-6 w-6', img: 'h-9 w-9', scale: 'scale-80 sm:scale-110' }
     case 'md':
     default:
-      return { btn: 'p-2', icon: 'h-4 w-4', img: 'h-7 w-7', scale: 'scale-60 sm:scale-100' }
+      return { btn: 'p-2', icon: 'h-4 w-4', img: 'h-7 w-7', scale: 'scale-80 sm:scale-100' }
   }
 })
 </script>

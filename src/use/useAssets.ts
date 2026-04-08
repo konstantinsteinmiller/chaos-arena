@@ -30,6 +30,8 @@ const SOUND_ASSETS = [
   'audio/sfx/clash-3.ogg',
   'audio/sfx/clash-4.ogg',
   'audio/sfx/clash-5.ogg',
+  'audio/sfx/celebration-1.ogg',
+  'audio/sfx/celebration-2.ogg',
   'audio/sfx/win.ogg',
   'audio/sfx/lose.ogg',
   'audio/sfx/reward-continue.ogg'

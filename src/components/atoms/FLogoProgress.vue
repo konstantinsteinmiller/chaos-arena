@@ -72,7 +72,7 @@ const sizeStyle = computed(() => {
 
 const positionStyle = computed(() => {
   if (done.value) {
-    // Top-left below stage badge (~56px down, 12px left)
+    // Top-left below stage badge (~52px down, 12px left)
     return { top: '52px', left: '12px', transform: 'none' }
   }
   // Centered
