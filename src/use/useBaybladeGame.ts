@@ -28,7 +28,13 @@ const isDesktop = window.innerWidth > 600 && window.innerHeight > 600 && !isMobi
 export const BLADE_RADIUS = isDesktop ? 26 : 28
 const BASE_MAX_FORCE = 14
 const STOP_THRESHOLD = 0.25
-const DAMAGE_SCALE = isDebug.value ? 10 : 1
+// Global multiplier on every speed-based damage roll. Production value
+// was bumped from 1.0 → 1.4 when the damage formula switched from gross
+// `aSpeed` to *closing* normal-velocity (Option A) and started gating
+// damage to one roll per contact entry (Option C). Clean head-on slams
+// read very close to the old numbers; sliding/chase "grind" that used
+// to rack up damage now deals near-zero, which is the intended fix.
+const DAMAGE_SCALE = isDebug.value ? 10 : 1.4
 const HIT_FLASH_FRAMES = 50
 const NPC_THINK_MS = 500
 const BOUNCE_DAMPENING = 0.75
@@ -261,6 +267,16 @@ export const useBaybladeGame = () => {
   const arenaBouncers: Bouncer[] = []
   const sparkCooldowns = new Map<string, number>() // "a_b" -> last spawn timestamp
   const clashSoundCooldowns = new Map<string, number>()
+
+  // Per-pair "last contact" timestamp used to implement the one-hit-per-
+  // contact-period rule (Option C). Every physics tick where a pair is
+  // overlapping refreshes its timestamp. A pair is "re-armed" for damage
+  // only when at least CONTACT_REARM_MS have passed WITHOUT any refresh —
+  // i.e. the pair has actually separated for a few frames. This prevents
+  // "hug and grind" from ticking damage every frame while still allowing
+  // legitimate bounce-and-re-impact trades to score multiple hits.
+  const CONTACT_REARM_MS = 50
+  const contactTimes = new Map<string, number>()
 
   // Per-defender crit cooldown — prevents the "rapid bounce-off + chase" loop
   // from triggering crits on every contact while the opponent is still being
@@ -779,6 +795,7 @@ export const useBaybladeGame = () => {
     lastCritAt.clear()
     spikyChipCooldowns.clear()
     healerHealCooldowns.clear()
+    contactTimes.clear()
     damageNumbers.length = 0
     activeSparks.length = 0
     gameOverAt = null
@@ -1527,7 +1544,19 @@ export const useBaybladeGame = () => {
     a.lastHitTime = now_hit
     b.lastHitTime = now_hit
 
-    triggerShake('small')
+    // ── One-hit-per-contact-period gate (Option C) ───────────────────────
+    // If this pair was already in contact on a recent tick, skip the damage
+    // branch entirely — they have to actually separate for CONTACT_REARM_MS
+    // before the next impact can deal damage again. Bounce + separation
+    // still runs unconditionally so the physics keeps looking right.
+    const contactKey = a.id < b.id ? `${a.id}_${b.id}` : `${b.id}_${a.id}`
+    const lastContactTs = contactTimes.get(contactKey) ?? 0
+    const contactArmed = now_hit - lastContactTs > CONTACT_REARM_MS
+    contactTimes.set(contactKey, now_hit)
+
+    // Camera shake only on the first frame of a contact period — otherwise
+    // hugging an opponent produces continuous screen jitter.
+    if (contactArmed) triggerShake('small')
 
     const nx = dx / dist
     const ny = dy / dist
@@ -1538,6 +1567,16 @@ export const useBaybladeGame = () => {
     // Elastic bounce FIRST — must happen before damage so killing blows still bounce
     const aDot = a.vx * nx + a.vy * ny
     const bDot = b.vx * nx + b.vy * ny
+
+    // ── Closing speed along the contact normal (Option A) ────────────────
+    // `aDot` is A's velocity projected along +n (n points A→B, so positive
+    // = toward B). `bDot` is B's velocity along the same axis. The pair is
+    // *closing* when aDot > bDot: A is moving toward B faster than B is
+    // getting out of the way. A blade chasing another at the same heading
+    // has aDot ≈ bDot → closingSpeed ≈ 0 → near-zero damage, which is the
+    // intended fix for the "hug and grind" exploit. Head-on impacts stay
+    // at full value because the two velocities add along the normal.
+    const closingSpeed = Math.max(0, aDot - bDot)
 
     a.vx = (a.vx - aDot * nx + bDot * nx) * BOUNCE_DAMPENING
     a.vy = (a.vy - aDot * ny + bDot * ny) * BOUNCE_DAMPENING
@@ -1551,7 +1590,7 @@ export const useBaybladeGame = () => {
     b.x += (overlap / 2) * nx
     b.y += (overlap / 2) * ny
 
-    // Damage based on pre-bounce speed
+    // Damage based on the pre-bounce closing speed along the contact normal.
     const aStats = statsFor(a)
     const bStats = statsFor(b)
 
@@ -1652,46 +1691,58 @@ export const useBaybladeGame = () => {
 
     const nowCrit = performance.now()
 
-    // a attacks b
-    if (aSpeed > STOP_THRESHOLD && !aHitInBack) {
-      // Crit only if:
-      //  1) attacker is at least 2x faster than defender (real back-stab,
-      //     not a love-tap from a similarly-fast chaser),
-      //  2) defender hasn't been crit recently — keeps chase-loops from
-      //     chaining crits while the opponent's rear stays exposed.
-      const bLastCrit = lastCritAt.get(b.id) ?? -Infinity
-      const isCrit = bHitInBack
-        && aSpeed >= bSpeed * 2
-        && (nowCrit - bLastCrit >= CRIT_COOLDOWN_MS)
-      if (isCrit) {
-        hadCrit = true
-        lastCritAt.set(b.id, nowCrit)
+    // Gate the entire speed-based damage block on the contact-armed check:
+    // a pair that stays in contact over multiple physics ticks only gets
+    // ONE damage roll per side per entry. Spiky chip damage below is
+    // deliberately OUTSIDE this gate — its design intent is constant chip
+    // pressure on every contact, throttled by its own per-pair cooldown.
+    if (contactArmed) {
+      // a attacks b
+      if (aSpeed > STOP_THRESHOLD && !aHitInBack) {
+        // Crit only if:
+        //  1) attacker is at least 2x faster than defender (real back-stab,
+        //     not a love-tap from a similarly-fast chaser),
+        //  2) defender hasn't been crit recently — keeps chase-loops from
+        //     chaining crits while the opponent's rear stays exposed.
+        const bLastCrit = lastCritAt.get(b.id) ?? -Infinity
+        const isCrit = bHitInBack
+          && aSpeed >= bSpeed * 2
+          && (nowCrit - bLastCrit >= CRIT_COOLDOWN_MS)
+        if (isCrit) {
+          hadCrit = true
+          lastCritAt.set(b.id, nowCrit)
+        }
+        let defMul = isCrit ? 1 : bStats.defenseMultiplier
+        if (a.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.5
+        const atkMul = isCrit ? 1.25 : 1
+        // Use the closing normal-speed, not gross aSpeed — a tangential
+        // flyby or a same-heading chase deals near-zero damage now.
+        const dmg = (closingSpeed * aStats.damageMultiplier * atkMul * aStats.totalWeight)
+          / (bStats.totalWeight * defMul)
+          * DAMAGE_SCALE * bSpeedAdv * aComboMul
+        if (applyBladeDamage(b, dmg, cx, cy, a.owner, isCrit)) hadKill = true
       }
-      let defMul = isCrit ? 1 : bStats.defenseMultiplier
-      if (a.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.5
-      const atkMul = isCrit ? 1.25 : 1
-      const dmg = (aSpeed * aStats.damageMultiplier * atkMul * aStats.totalWeight)
-        / (bStats.totalWeight * defMul)
-        * DAMAGE_SCALE * bSpeedAdv * aComboMul
-      if (applyBladeDamage(b, dmg, cx, cy, a.owner, isCrit)) hadKill = true
-    }
-    // b attacks a
-    if (bSpeed > STOP_THRESHOLD && !bHitInBack) {
-      const aLastCrit = lastCritAt.get(a.id) ?? -Infinity
-      const isCrit = aHitInBack
-        && bSpeed >= aSpeed * 2
-        && (nowCrit - aLastCrit >= CRIT_COOLDOWN_MS)
-      if (isCrit) {
-        hadCrit = true
-        lastCritAt.set(a.id, nowCrit)
+      // b attacks a
+      if (bSpeed > STOP_THRESHOLD && !bHitInBack) {
+        const aLastCrit = lastCritAt.get(a.id) ?? -Infinity
+        const isCrit = aHitInBack
+          && bSpeed >= aSpeed * 2
+          && (nowCrit - aLastCrit >= CRIT_COOLDOWN_MS)
+        if (isCrit) {
+          hadCrit = true
+          lastCritAt.set(a.id, nowCrit)
+        }
+        let defMul = isCrit ? 1 : aStats.defenseMultiplier
+        if (b.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.5
+        const atkMul = isCrit ? 1.25 : 1
+        // Same closing-speed term for B's counter-attack — physically both
+        // sides of a collision feel the same normal-impact velocity; their
+        // output damage still differs via weight ratio, damageMul, and defMul.
+        const dmg = (closingSpeed * bStats.damageMultiplier * atkMul * bStats.totalWeight)
+          / (aStats.totalWeight * defMul)
+          * DAMAGE_SCALE * aSpeedAdv * bComboMul
+        if (applyBladeDamage(a, dmg, cx, cy, b.owner, isCrit)) hadKill = true
       }
-      let defMul = isCrit ? 1 : aStats.defenseMultiplier
-      if (b.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.5
-      const atkMul = isCrit ? 1.25 : 1
-      const dmg = (bSpeed * bStats.damageMultiplier * atkMul * bStats.totalWeight)
-        / (aStats.totalWeight * defMul)
-        * DAMAGE_SCALE * aSpeedAdv * bComboMul
-      if (applyBladeDamage(a, dmg, cx, cy, b.owner, isCrit)) hadKill = true
     }
 
     // Spiky top — flat "barbs" damage on every collision pair, independent
