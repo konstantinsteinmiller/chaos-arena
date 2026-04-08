@@ -191,8 +191,14 @@ let speedBoostIntervalId: number | null = null
 const updateCanvasSize = () => {
   const canvas = canvasRef.value
   if (!canvas) return
-  canvasWidth.value = window.innerWidth
-  canvasHeight.value = window.innerHeight
+  // visualViewport reflects the *currently visible* area on mobile (i.e. it
+  // shrinks while the URL bar is showing) — fall back to innerHeight where
+  // it isn't supported. This keeps the canvas/physics bounds aligned with
+  // what the user actually sees and prevents bottom-row buttons from being
+  // hidden behind the browser chrome.
+  const vv = window.visualViewport
+  canvasWidth.value = vv?.width ?? window.innerWidth
+  canvasHeight.value = vv?.height ?? window.innerHeight
   canvasSize.value = Math.min(canvasWidth.value, canvasHeight.value)
   canvas.width = canvasWidth.value
   canvas.height = canvasHeight.value
@@ -327,6 +333,7 @@ const renderLoop = () => {
 onMounted(() => {
   updateCanvasSize()
   window.addEventListener('resize', updateCanvasSize)
+  window.visualViewport?.addEventListener('resize', updateCanvasSize)
 
   initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType)
   renderRafId = requestAnimationFrame(renderLoop)
@@ -339,6 +346,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateCanvasSize)
+  window.visualViewport?.removeEventListener('resize', updateCanvasSize)
   stopPhysics()
   if (renderRafId !== null) cancelAnimationFrame(renderRafId)
   if (speedBoostIntervalId !== null) clearInterval(speedBoostIntervalId)
@@ -348,8 +356,8 @@ onUnmounted(() => {
 </script>
 
 <template lang="pug">
-  div.arena.relative.w-screen.h-screen.overflow-hidden.flex.items-center.justify-center(
-    class="bg-[#0d1117]"
+  div.arena.relative.w-screen.overflow-hidden.flex.items-center.justify-center(
+    class="bg-[#0d1117] h-screen h-dvh"
     :style="shakeStyle"
   )
     //- Logo Preloader
@@ -431,7 +439,11 @@ onUnmounted(() => {
 
       //- Bottom-left daily rewards (button + modal, fully self-contained)
       DailyRewards(v-if="showConfigButton && !showReward && currentStageId >= 3")
-      FMuteButton(v-if="showConfigButton" class="left-2 sm:left-4").fixed.bottom-18
+      FMuteButton(
+        v-if="showConfigButton"
+        class="left-2 sm:left-4 fixed"
+        :style="{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' }"
+      )
 
       //- Bottom-right buttons (always visible when not in reward overlay)
       div(

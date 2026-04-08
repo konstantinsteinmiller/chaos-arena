@@ -232,6 +232,12 @@ export const useBaybladeGame = () => {
   const sparkCooldowns = new Map<string, number>() // "a_b" -> last spawn timestamp
   const clashSoundCooldowns = new Map<string, number>()
 
+  // Per-defender crit cooldown — prevents the "rapid bounce-off + chase" loop
+  // from triggering crits on every contact while the opponent is still being
+  // pushed and has its rear constantly exposed.
+  const CRIT_COOLDOWN_MS = 1500
+  const lastCritAt = new Map<number, number>()
+
   // ── Blade Model Images ──────────────────────────────────────────────────
   const bladeModelImages = new Map<string, HTMLImageElement>()
 
@@ -529,6 +535,7 @@ export const useBaybladeGame = () => {
     meteorIntroTimer = 0
     trails.clear()
     comboState.clear()
+    lastCritAt.clear()
     damageNumbers.length = 0
     clearCountdown()
     phase.value = 'tap_to_start'
@@ -1126,26 +1133,31 @@ export const useBaybladeGame = () => {
     const aMaxSpd = BASE_MAX_FORCE * aStats.speedMultiplier
     const bMaxSpd = BASE_MAX_FORCE * bStats.speedMultiplier
 
-    // Check if attacker a hits b in b's back
+    // Check if attacker a hits b in b's back.
+    // n points a→b, so on b's surface the contact point is at b.center + bRadius·(-n).
+    // A "rear hit" means that contact lies on b's REAR half (opposite b's forward).
+    // Geometrically: (-n) · (-bForward) >= cos(45°)  ⇔  bForward · n >= cos(45°).
+    // Intuitively: b is moving AWAY from a along n, so a is catching b from behind.
     const bMovingFast = bSpeed >= bMaxSpd * 0.25
     let bHitInBack = false
     if (bMovingFast) {
-      // b's forward direction
       const bDirX = b.vx / bSpeed
       const bDirY = b.vy / bSpeed
-      // If the hit comes from behind b, then b's forward aligns with (b→a) direction (-nx,-ny)
-      const cosAngle = bDirX * (-nx) + bDirY * (-ny)
+      const cosAngle = bDirX * nx + bDirY * ny
       bHitInBack = cosAngle >= Math.cos(CRIT_CONE_HALF)
     }
 
-    // Check if attacker b hits a in a's back
+    // Check if attacker b hits a in a's back.
+    // Contact on a is at a.center + aRadius·n. For it to be on a's rear:
+    //  n · (-aForward) >= cos(45°)  ⇔  aForward · n <= -cos(45°).
+    // Intuitively: a is moving AWAY from b along -n, so b is catching a from behind.
     const aMovingFast = aSpeed >= aMaxSpd * 0.25
     let aHitInBack = false
     if (aMovingFast) {
       const aDirX = a.vx / aSpeed
       const aDirY = a.vy / aSpeed
       const cosAngle = aDirX * nx + aDirY * ny
-      aHitInBack = cosAngle >= Math.cos(CRIT_CONE_HALF)
+      aHitInBack = cosAngle <= -Math.cos(CRIT_CONE_HALF)
     }
 
     let hadCrit = false
@@ -1208,10 +1220,23 @@ export const useBaybladeGame = () => {
       }
     }
 
+    const nowCrit = performance.now()
+
     // a attacks b
     if (aSpeed > STOP_THRESHOLD && !aHitInBack) {
+      // Crit only if:
+      //  1) attacker is at least 2x faster than defender (real back-stab,
+      //     not a love-tap from a similarly-fast chaser),
+      //  2) defender hasn't been crit recently — keeps chase-loops from
+      //     chaining crits while the opponent's rear stays exposed.
+      const bLastCrit = lastCritAt.get(b.id) ?? -Infinity
       const isCrit = bHitInBack
-      if (isCrit) hadCrit = true
+        && aSpeed >= bSpeed * 2
+        && (nowCrit - bLastCrit >= CRIT_COOLDOWN_MS)
+      if (isCrit) {
+        hadCrit = true
+        lastCritAt.set(b.id, nowCrit)
+      }
       let defMul = isCrit ? 1 : bStats.defenseMultiplier
       if (a.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.5
       const atkMul = isCrit ? 1.25 : 1
@@ -1225,8 +1250,14 @@ export const useBaybladeGame = () => {
     }
     // b attacks a
     if (bSpeed > STOP_THRESHOLD && !bHitInBack) {
+      const aLastCrit = lastCritAt.get(a.id) ?? -Infinity
       const isCrit = aHitInBack
-      if (isCrit) hadCrit = true
+        && bSpeed >= aSpeed * 2
+        && (nowCrit - aLastCrit >= CRIT_COOLDOWN_MS)
+      if (isCrit) {
+        hadCrit = true
+        lastCritAt.set(a.id, nowCrit)
+      }
       let defMul = isCrit ? 1 : aStats.defenseMultiplier
       if (b.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.5
       const atkMul = isCrit ? 1.25 : 1
@@ -1922,6 +1953,7 @@ export const useBaybladeGame = () => {
     updateDrag,
     releaseDrag,
     forceReleaseDragAtMax,
+    startPhysics,
     stopPhysics,
     spawnMeteorShower,
 

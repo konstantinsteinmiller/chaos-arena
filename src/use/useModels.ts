@@ -67,6 +67,7 @@ export const SKIN_COST = 300
 
 const SKINS_KEY = 'bayblade_owned_skins'
 const SELECTED_SKINS_KEY = 'bayblade_selected_skins'
+const PICKER_OPENED_KEY = 'bayblade_skin_picker_opened'
 
 const loadOwnedSkins = (): Set<string> => {
   try {
@@ -86,8 +87,18 @@ const loadSelectedSkins = (): Record<string, string> => {
   return {}
 }
 
+const loadPickerOpened = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(PICKER_OPENED_KEY)
+    if (raw) return new Set(JSON.parse(raw))
+  } catch { /* fall through */
+  }
+  return new Set()
+}
+
 const ownedSkins: Ref<Set<string>> = ref(loadOwnedSkins())
 const selectedSkins: Ref<Record<string, string>> = ref(loadSelectedSkins())
+const pickerOpenedParts: Ref<Set<string>> = ref(loadPickerOpened())
 
 const saveOwnedSkins = () => {
   localStorage.setItem(SKINS_KEY, JSON.stringify([...ownedSkins.value]))
@@ -96,6 +107,28 @@ const saveOwnedSkins = () => {
 const saveSelectedSkins = () => {
   localStorage.setItem(SELECTED_SKINS_KEY, JSON.stringify(selectedSkins.value))
 }
+
+const savePickerOpened = () => {
+  localStorage.setItem(PICKER_OPENED_KEY, JSON.stringify([...pickerOpenedParts.value]))
+}
+
+/** Mark that the player has opened the skin picker for the given top part. */
+export const markSkinPickerOpened = (topPartId: TopPartId) => {
+  if (pickerOpenedParts.value.has(topPartId)) return
+  pickerOpenedParts.value = new Set([...pickerOpenedParts.value, topPartId])
+  savePickerOpened()
+}
+
+export const wasSkinPickerOpened = (topPartId: TopPartId): boolean =>
+  pickerOpenedParts.value.has(topPartId)
+
+/** All currently-owned skins for a top part (in declared order). */
+export const ownedSkinsForTop = (topPartId: TopPartId): BaybladeModelId[] =>
+  SKINS_PER_TOP[topPartId].filter(id => isSkinOwned(topPartId, id))
+
+/** True if at least one skin in this top part's catalog is not yet owned. */
+export const hasUnownedSkinsForTop = (topPartId: TopPartId): boolean =>
+  SKINS_PER_TOP[topPartId].some(id => !isSkinOwned(topPartId, id))
 
 /** Default skins (first in each list) are always owned */
 export const isSkinOwned = (topPartId: TopPartId, modelId: BaybladeModelId): boolean => {

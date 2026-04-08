@@ -1,11 +1,13 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import MainMenu from '@/views/MainMenu'
 import BaybladeArena from '@/views/BaybladeArena'
+import CritTestScene from '@/views/CritTestScene.vue'
 import useUser, { isWeb } from '@/use/useUser'
 
 const routes = [
   { path: '/', name: 'main-menu', component: MainMenu, redirect: 'battle' },
-  { path: '/battle', name: 'battle', component: BaybladeArena }
+  { path: '/battle', name: 'battle', component: BaybladeArena },
+  { path: '/crit-test', name: 'crit-test', component: CritTestScene }
 ]
 
 const router = createRouter({

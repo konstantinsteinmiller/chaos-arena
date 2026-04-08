@@ -66,7 +66,7 @@ onMounted(() => {
   })
   settleFallbackId = window.setTimeout(() => {
     if (!done.value) done.value = true
-  }, 4000)
+  }, 2000)
 })
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)

@@ -52,16 +52,28 @@ const NEWCOMER_CHANCE_PER_TICK = MAX_NEWCOMERS_PER_DAY / 24
 const NEWCOMERS_KEY = 'bayblade_leaderboard_newcomers'
 const GHOST_FIGHTS_KEY = 'bayblade_ghost_fights_today'
 
+// Names lean ~60% silly/childish to match the 6–15 target audience.
+// Sensitive themes (sexual, political, religious, slurs, drugs/alcohol,
+// real-world violence, body-shaming) are intentionally excluded.
 const FAKE_NAMES = [
-  'BladeKing', 'StormFury', 'NightHowl', 'ZenithX', 'IronVortex', 'CrimsonAce',
-  'ShadowRipper', 'NovaStrike', 'PhoenixWrath', 'TitanForge', 'VenomEdge', 'FrostFang',
-  'EmberSoul', 'ThunderJax', 'OmegaSpin', 'RiftBreaker', 'KaiserBolt', 'LunaSpark',
-  'OnyxClaw', 'BlazeMonk', 'HavocReign', 'EchoStrike', 'GlacialQ', 'PulseRogue',
-  'AstroDuke', 'DriftKing', 'FuryMax', 'ZephyrZ', 'NebulaJin', 'ValeRune',
-  'SableHex', 'CinderJet', 'RogueWraith', 'TempestVox', 'OrbitGhost', 'NeonFang',
-  'AshenRook', 'VoltaireX', 'SolarWisp', 'MoonReaver', 'GraveSpark', 'IronEcho',
-  'StarflareQ', 'DuneWalker', 'GhostShard', 'TwinFangs', 'ZealotPyre', 'BlackQuill',
-  'ChromeHavoc', 'WispStrider'
+  // ── "Cool" edgy names (~40%) ───────────────────────────────────────────
+  'BladeKing', 'StormFury', 'NightHowl', 'IronVortex', 'CrimsonAce',
+  'ShadowRipper', 'NovaStrike', 'PhoenixWrath', 'TitanForge', 'VenomEdge',
+  'FrostFang', 'EmberSoul', 'ThunderJax', 'OmegaSpin', 'RiftBreaker',
+  'KaiserBolt', 'OnyxClaw', 'BlazeMonk', 'HavocReign', 'EchoStrike',
+  'PulseRogue', 'AstroDuke', 'DriftKing', 'FuryMax', 'NebulaJin',
+  'SableHex', 'TempestVox', 'NeonFang', 'VoltaireX', 'StarflareQ',
+  // ── Silly / childish names (~60%) ──────────────────────────────────────
+  'AllKiller', 'Farter', 'BurpKing', 'FartZilla', 'ToeJam',
+  'BoogerBoy', 'SnotRocket', 'PicklePants', 'WafflePants', 'NuggetKing',
+  'TacoTornado', 'BananaBruh', 'PizzaPirate', 'NoodleArm', 'MuffinMan',
+  'CheeseWhiz', 'SpaghettiKid', 'JellyBean', 'DonutDude', 'PancakePirate',
+  'MeatballHead', 'BurritoBomber', 'NachoBoss', 'SodaSlurper', 'JuiceBoxHero',
+  'WiggleWorm', 'GiggleGoblin', 'WackyJack', 'ZanyZeke', 'SillyBilly',
+  'GoofyGus', 'DerpyDuck', 'KooKooKid', 'BonkBoy', 'BoingBoing',
+  'SquishyKing', 'JellyJiggler', 'ThumpyBunny', 'NoobSlayer', 'LagBeast',
+  'SkibidiKing', 'YeetMaster', 'SusBro', 'DabKing', 'BigChungus',
+  'SneezyPete', 'HiccupHero', 'CrumbCrusher', 'BellyFlopper', 'GrumpyGus'
 ]
 
 const TOP_IDS: TopPartId[] = ['star', 'triangle', 'round', 'quadratic', 'cushioned', 'piercer']
@@ -89,10 +101,17 @@ const generateBlade = (stage: number): BaybladeConfig => ({
   modelId: rand(FAKE_MODEL_IDS)
 })
 
+// Textual suffixes used to disambiguate when the player count exceeds the
+// name pool. We deliberately avoid numeric suffixes (e.g. "Farter2") since
+// the names should read like real kid handles, not auto-generated ones.
+const NAME_SUFFIXES = ['Jr', 'Pro', 'X', 'Max', 'Z', 'Lord', 'Boss', 'Mega', 'Ultra', 'Ace']
+
 const makeName = (i: number): string => {
   const base = FAKE_NAMES[i % FAKE_NAMES.length] ?? 'Rival'
   const suffixIdx = Math.floor(i / FAKE_NAMES.length)
-  return suffixIdx === 0 ? base : `${base}${suffixIdx + 1}`
+  if (suffixIdx === 0) return base
+  const suffix = NAME_SUFFIXES[(suffixIdx - 1) % NAME_SUFFIXES.length]!
+  return `${base}${suffix}`
 }
 
 // ─── Persistence ────────────────────────────────────────────────────────────

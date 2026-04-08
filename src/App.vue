@@ -105,7 +105,7 @@ const allowedToShow = computed(() => (isCrazyWeb && isCrazyGamesUrl()) || !isCra
 </script>
 
 <template lang="pug">
-  div(v-if="allowedToShow" id="app-root").h-screen.w-screen.app-container.root-protection.game-ui-immune
+  div(v-if="allowedToShow" id="app-root" class="h-screen h-dvh w-screen app-container root-protection game-ui-immune")
     RouterView
 
   div.relative.w-full.h-full(v-else-if="isCrazyWeb")

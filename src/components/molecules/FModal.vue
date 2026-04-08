@@ -40,7 +40,7 @@ const handleTabChange = (val: string | number) => {
       div(class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="close")
 
       //- Modal Container
-      div(class="model-container relative w-full max-w-lg")
+      div(class="model-container relative w-full max-w-2xl")
 
         //- Header Area (Tabs or Ribbon)
         div(
@@ -53,12 +53,13 @@ const handleTabChange = (val: string | number) => {
             FTabs(
               :model-value="activeTab"
               @update:model-value="handleTabChange"
+              @click.stop
               :options="tabs"
             )
 
           //- CASE 2: Single Title Ribbon
           template(v-else-if="title")
-            div(class="flex justify-center scale-70 sm:scale-100")
+            div(class="flex justify-center scale-70 sm:scale-100" @click.stop)
               div(class="relative")
                 div(class="absolute inset-0 translate-y-1 rounded-lg bg-[#1a2b4b]")
                 div(class="relative flex items-center justify-center bg-gradient-to-b from-[#ffcd00] to-[#f7a000] border-4 border-[#0f1a30] px-10 py-2 rounded-xl")

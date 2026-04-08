@@ -14,6 +14,8 @@ import useBaybladeCampaign, { upgradeCost, TOP_UPGRADE_BONUS, BOTTOM_UPGRADE_BON
 import {
   SKINS_PER_TOP, SKIN_COST, MODEL_LABELS,
   modelImgPath, isSkinOwned, buySkin, selectSkin, getSelectedSkin,
+  ownedSkinsForTop, hasUnownedSkinsForTop,
+  markSkinPickerOpened, wasSkinPickerOpened,
   type BaybladeModelId
 } from '@/use/useModels'
 import IconCoin from '@/components/icons/IconCoin.vue'
@@ -133,7 +135,13 @@ const skinPickerKey = ref(0)
 const openSkinPicker = (topId: TopPartId) => {
   skinPickerTopId.value = topId
   skinPickerOpen.value = true
+  markSkinPickerOpened(topId)
 }
+
+/** True when the plus icon should hint-bounce (unowned skins available
+ *  AND the player hasn't yet opened the picker for this top part). */
+const shouldBouncePlus = (topId: TopPartId): boolean =>
+  hasUnownedSkinsForTop(topId) && !wasSkinPickerOpened(topId)
 
 const handleBuySkin = (topId: TopPartId, modelId: BaybladeModelId) => {
   if (coins.value < SKIN_COST) return
@@ -176,17 +184,42 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
             v-for="part in TOP_PARTS_LIST"
             :key="part.id"
             @click="setTop(part.id)"
-            class="cursor-pointer rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 flex flex-col"
+            class="relative cursor-pointer rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 flex flex-col top-part-card"
             :class="currentConfig.topPartId === part.id \
             ? 'bg-gradient-to-b from-yellow-500 to-yellow-600 border-2 border-yellow-300' \
             : 'bg-slate-700 border-2 border-slate-600 hover:border-slate-400'"
           )
+            //- Floating skin row above the card border:
+            //- owned skin thumbnails + plus button to open the purchase modal
+            div.skin-row.-mt-2.absolute.left-0.right-0.flex.justify-center.items-center.pointer-events-none(
+              class="z-10"
+            )
+              div.flex.items-center.justify-center.rounded-full.bg-slate-900.border.border-slate-600.pointer-events-auto.skin-row-inner(
+                class="px-1 py-0.5 gap-0.5 sm:gap-1 shadow-md"
+              )
+                div(
+                  v-for="skinId in ownedSkinsForTop(part.id)"
+                  :key="skinId"
+                  @click.stop="handleSelectSkin(part.id, skinId)"
+                  class="inline-flex shrink-0 rounded-full cursor-pointer transition-all skin-row-thumb"
+                  :class="getSelectedSkin(part.id) === skinId\
+                    ? 'ring-2 ring-yellow-300/80 scale-110'\
+                    : 'hover:ring-2 hover:ring-slate-300 opacity-60 hover:opacity-100'"
+                  :title="MODEL_LABELS[skinId]"
+                )
+                  img(
+                    :src="modelImgPath(skinId)"
+                    class="block rounded-full object-cover skin-row-img"
+                    :alt="skinId"
+                  )
+                button.skin-plus-btn.ml-1.rounded-full.border-2.border-yellow-400.bg-slate-700.text-yellow-300.font-black.flex.items-center.justify-center.cursor-pointer.transition-all(
+                  class="hover:bg-slate-600 hover:scale-110"
+                  :class="shouldBouncePlus(part.id) ? 'hint-bounce-2' : ''"
+                  @click.stop="openSkinPicker(part.id)"
+                  title="Purchase more skins"
+                ) +
             div.text-center.part-card-body
               div.text-white.font-bold.truncate.game-text(class="text-[9px] sm:text-xs") {{ part.label }}
-              div.text-yellow-400.font-bold(
-                v-if="topLevel(part.id) > 0"
-                class="text-[8px] sm:text-[10px] leading-none"
-              ) Lv.{{ topLevel(part.id) }}
               div.flex.flex-col.items-center.stat-list
                 div.flex.items-center.justify-center.text-red-400.rounded-full.stat-glass(class="gap-0.5 px-[2px] py-[1px]")
                   IconAttack.inline-block.stat-icon
@@ -197,14 +230,6 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
                 div.flex.items-center.justify-center.text-green-400.rounded-full.stat-glass(class="gap-0.5 px-[2px] py-[1px]" v-if="topHp(part) > 0")
                   IconHp.inline-block.stat-icon
                   span +{{ topHp(part) }}
-            //- Skin preview + picker button
-            div.h-full.flex.items-end.justify-center.skin-preview(class="gap-0.5")
-              img(
-                :src="modelImgPath(getSelectedSkin(part.id))"
-                class="rounded-full border border-slate-500 object-contain cursor-pointer hover:border-yellow-400 transition-all skin-img"
-                @click.stop="openSkinPicker(part.id)"
-                :alt="getSelectedSkin(part.id)"
-              )
             //- Upgrade button integrated at card bottom
             button.w-full.rounded-b-lg.font-bold.transition-all.mt-auto.upgrade-btn(
               :class="coins >= upgradeCost(topLevel(part.id) + 1) \
@@ -212,10 +237,15 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
                 : 'bg-slate-600 text-slate-400 cursor-not-allowed'"
               @click.stop="buyTopUpgrade(part.id)"
             )
-              span.flex.items-center.justify-center(class="gap-0.5")
+              span.flex.items-center.justify-center(class="gap-0.5 -mt-[2px] pt-[2px]")
                 span.game-text ⬆
                 IconCoin.upgrade-coin-icon.text-yellow-300
                 span.game-text {{ upgradeCost(topLevel(part.id) + 1) }}
+            //- Level badge — bottom-right corner, overlapping the upgrade button
+            div.level-badge.absolute.font-black.game-text.text-white.flex.items-center.justify-center.pointer-events-none(
+              v-if="topLevel(part.id) > 0"
+              class="-mb-[4px] bg-gradient-to-b from-purple-500 to-purple-800 border border-yellow-300 rounded-md shadow-md z-20"
+            ) Lv.{{ topLevel(part.id) }}
 
       //- ── Bottom + Stats Column ────────────────────────────────────────────
       div.bottom-col
@@ -230,17 +260,13 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
               v-for="part in BOTTOM_PARTS_LIST"
               :key="part.id"
               @click="setBottom(part.id)"
-              class="cursor-pointer rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 flex flex-col"
+              class="relative cursor-pointer rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 flex flex-col"
               :class="currentConfig.bottomPartId === part.id \
               ? 'bg-gradient-to-b from-yellow-500 to-yellow-600 border-2 border-yellow-300' \
               : 'bg-slate-700 border-2 border-slate-600 hover:border-slate-400'"
             )
               div.text-center.part-card-body
                 div.text-white.font-bold.game-text(class="text-[9px] sm:text-xs") {{ part.label }}
-                div.text-yellow-400.font-bold(
-                  v-if="bottomLevel(part.id) > 0"
-                  class="text-[8px] sm:text-[10px] leading-none"
-                ) Lv.{{ bottomLevel(part.id) }}
                 div.flex.flex-col.items-center.stat-list
                   div.flex.items-center.justify-center.text-cyan-400.rounded-full.stat-glass(class="gap-0.5 px-[2px] py-[1px]")
                     IconSpeed.inline-block.stat-icon
@@ -258,10 +284,15 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
                   : 'bg-slate-600 text-slate-400 cursor-not-allowed'"
                 @click.stop="buyBottomUpgrade(part.id)"
               )
-                span.flex.items-center.justify-center(class="gap-0.5")
+                span.flex.items-center.justify-center(class="gap-0.5 -mt-[2px] pt-[2px]")
                   span.game-text ⬆
                   IconCoin.upgrade-coin-icon.text-yellow-300
                   span.game-text {{ upgradeCost(bottomLevel(part.id) + 1) }}
+              //- Level badge — bottom-right corner, overlapping the upgrade button
+              div.level-badge.absolute.font-black.game-text.text-white.flex.items-center.justify-center.pointer-events-none(
+                v-if="bottomLevel(part.id) > 0"
+                class="-mb-[4px] bg-gradient-to-b from-purple-500 to-purple-800 border border-yellow-300 rounded-md shadow-md z-20"
+              ) Lv.{{ bottomLevel(part.id) }}
 
         //- ── Stats Summary ──────────────────────────────────────────────────
         div.stats-bar(class="border-t border-slate-500/50")
@@ -361,12 +392,20 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
 .top-grid
   grid-template-columns: repeat(3, 1fr)
   gap: 0.375rem
+  // Leave room for the floating skin row that overflows above each card
+  padding-top: 1rem
+  row-gap: 1.25rem
 
 .bottom-grid
   gap: 0.375rem
 
 .part-card-body
   padding: 0.2rem 0.2rem 0
+
+// Top part card needs internal top padding so the floating row above
+// the border doesn't visually collide with the part label.
+.top-part-card
+  padding-top: 0.375rem
 
 .stat-list
   margin-top: 0.125rem
@@ -380,12 +419,35 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
   width: 0.625rem
   height: 0.625rem
 
-.skin-preview
-  padding: 0.2rem 0
+// Floating skin row sitting above the top-part card border
+.skin-row
+  top: -0.85rem
 
-.skin-img
-  width: 1.375rem
-  height: 1.375rem
+.skin-row-thumb
+  width: 0.95rem
+  height: 0.95rem
+  line-height: 0
+
+.skin-row-img
+  width: 100%
+  height: 100%
+
+.skin-plus-btn
+  width: 1.05rem
+  height: 1.05rem
+  font-size: 0.85rem
+  line-height: 1
+  padding: 0
+
+// Level badge anchored to the card's bottom-right, overlapping the
+// upgrade button so it pops above the yellow background.
+.level-badge
+  right: -0.2rem
+  bottom: -0.25rem
+  font-size: 8px
+  line-height: 1
+  padding: 1px 3px
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000
 
 .upgrade-btn
   font-size: 8px
@@ -418,12 +480,17 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
   .top-grid
     grid-template-columns: repeat(6, 1fr)
     gap: 0.5rem
+    padding-top: 1.25rem
+    row-gap: 1.5rem
 
   .bottom-grid
     gap: 0.5rem
 
   .part-card-body
     padding: 0.375rem 0.375rem 0
+
+  .top-part-card
+    padding-top: 0.5rem
 
   .stat-list
     font-size: 11px
@@ -433,12 +500,27 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
     width: 0.75rem
     height: 0.75rem
 
-  .skin-preview
-    padding: 0.25rem 0
+  .skin-row
+    top: -1rem
 
-  .skin-img
-    width: 1.75rem
-    height: 1.75rem
+  .skin-row-thumb
+    width: 1.25rem
+    height: 1.25rem
+
+  .skin-row-img
+    width: 100%
+    height: 100%
+
+  .skin-plus-btn
+    width: 1.35rem
+    height: 1.35rem
+    font-size: 1rem
+
+  .level-badge
+    right: -0.3rem
+    bottom: -0.35rem
+    font-size: 10px
+    padding: 2px 5px
 
   .upgrade-btn
     font-size: 10px
@@ -477,12 +559,17 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
   .top-grid
     grid-template-columns: repeat(3, 1fr)
     gap: 0.25rem
+    padding-top: 0.85rem
+    row-gap: 1rem
 
   .bottom-grid
     gap: 0.25rem
 
   .part-card-body
     padding: 0.125rem 0.125rem 0
+
+  .top-part-card
+    padding-top: 0.3rem
 
   .stat-list
     font-size: 8px
@@ -492,12 +579,27 @@ const handleSelectSkin = (topId: TopPartId, modelId: BaybladeModelId) => {
     width: 0.5rem
     height: 0.5rem
 
-  .skin-preview
-    padding: 0.1rem 0
+  .skin-row
+    top: -0.7rem
 
-  .skin-img
-    width: 1rem
-    height: 1rem
+  .skin-row-thumb
+    width: 0.75rem
+    height: 0.75rem
+
+  .skin-row-img
+    width: 100%
+    height: 100%
+
+  .skin-plus-btn
+    width: 0.85rem
+    height: 0.85rem
+    font-size: 0.7rem
+
+  .level-badge
+    right: -0.15rem
+    bottom: -0.2rem
+    font-size: 7px
+    padding: 1px 2px
 
   .upgrade-btn
     font-size: 7px
