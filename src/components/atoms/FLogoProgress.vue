@@ -53,14 +53,25 @@ const onResize = () => {
   viewportSize.value = Math.min(window.innerWidth, window.innerHeight)
 }
 
+// Safety timeout: if asset loading glitches and progress never reaches 100,
+// force the logo to its final top-left position after at most 4 seconds so
+// it never sits stuck in the center.
+let settleFallbackId: number | null = null
+
 onMounted(() => {
   window.addEventListener('resize', onResize)
   // Let initial position render before enabling transitions
   requestAnimationFrame(() => {
     settled.value = true
   })
+  settleFallbackId = window.setTimeout(() => {
+    if (!done.value) done.value = true
+  }, 4000)
 })
-onUnmounted(() => window.removeEventListener('resize', onResize))
+onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
+  if (settleFallbackId !== null) clearTimeout(settleFallbackId)
+})
 
 const centeredSize = computed(() => Math.floor(viewportSize.value * 0.4))
 const finalSize = 64 // w-16 h-16

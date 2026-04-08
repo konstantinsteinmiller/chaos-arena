@@ -3,7 +3,7 @@ import useModels from '@/use/useModels'
 import useUser, { isDemo } from '@/use/useUser'
 import useCampaign, { demoCampaignNodes, type MobileNode } from '@/use/useCampaign'
 import useBaybladeCampaign, { STAGES, type ArenaType } from '@/use/useBaybladeCampaign'
-import { arenaType } from '@/use/useBaybladeGame'
+import { arenaType, resetGameStartCount } from '@/use/useBaybladeGame'
 import type { GameCard } from '@/types/game'
 
 const storedCheat = localStorage.getItem('cheat') || 'false'
@@ -75,6 +75,11 @@ const useCheats = () => {
     console.warn('[CHEAT] Chest cooldown reset to 00:00.')
   }
 
+  const resetGameStartCounter = () => {
+    resetGameStartCount()
+    console.warn('[CHEAT] Game-start counter armed. Next match start will trigger the countdown.')
+  }
+
   const setArenaType = (type: ArenaType) => {
     arenaType.value = type
     console.warn(`[CHEAT] Arena type set to '${type}'.`)
@@ -105,7 +110,7 @@ const useCheats = () => {
     'ctrl+shift+g': unlockAllDemoCampaignNodes,
     'ctrl+shift+j': resetCampaign,
     'ctrl+shift+k': printAllIds,
-    'ctrl+shift+d': () => console.log('[DEBUG] Cards:', allModels),
+    'ctrl+shift+d': () => console.log('[DEBUG] Models:', allModels),
     // Bayblade stage shortcuts: Ctrl+Shift+1..9 for stages 1-9, Ctrl+Shift+0 for stage 10
     'ctrl+shift+1': () => setBaybladeStage(1),
     'ctrl+shift+2': () => setBaybladeStage(2),
@@ -128,6 +133,7 @@ const useCheats = () => {
     'ctrl+shift+alt+9': () => setBaybladeStage(19),
     'ctrl+shift+alt+0': () => setBaybladeStage(20),
     'ctrl+shift+alt+t': resetChestCooldown,
+    'ctrl+shift+alt+g': resetGameStartCounter,
     // Arena type shortcuts
     'ctrl+shift+alt+l': () => setArenaType('lava'),
     'ctrl+shift+alt+i': () => setArenaType('ice'),

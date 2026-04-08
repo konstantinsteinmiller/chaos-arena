@@ -105,6 +105,50 @@ export { arenaType }
 // run the deterministic physics step N times per rendered frame.
 export const simSpeed: Ref<1 | 2> = ref(1)
 
+// ─── Game-Start Countdown ────────────────────────────────────────────────────
+
+// Counts how many matches the player has started. Every Nth start triggers a
+// "3, 2, 1, GO" countdown rendered inside the meteor shower ring.
+const GAME_START_COUNT_KEY = 'bayblade_game_start_count'
+const COUNTDOWN_EVERY_N_GAMES = 5
+const COUNTDOWN_STEP_MS = 375
+const COUNTDOWN_SEQUENCE = ['3', '2', '1', 'GO'] as const
+
+export const gameStartCount: Ref<number> = ref(
+  parseInt(localStorage.getItem(GAME_START_COUNT_KEY) || '0', 10)
+)
+export const countdownText: Ref<string | null> = ref(null)
+
+const countdownTimers: number[] = []
+const clearCountdown = () => {
+  while (countdownTimers.length) {
+    const id = countdownTimers.pop()
+    if (id !== undefined) clearTimeout(id)
+  }
+  countdownText.value = null
+}
+
+const triggerCountdown = () => {
+  clearCountdown()
+  COUNTDOWN_SEQUENCE.forEach((text, i) => {
+    countdownTimers.push(window.setTimeout(() => {
+      countdownText.value = text
+    }, i * COUNTDOWN_STEP_MS))
+  })
+  countdownTimers.push(window.setTimeout(() => {
+    countdownText.value = null
+  }, COUNTDOWN_SEQUENCE.length * COUNTDOWN_STEP_MS))
+}
+
+/** Cheat helper: arm the next match start to fire the countdown. We set the
+ *  counter so the next `startMatch()` increment lands on a multiple of
+ *  COUNTDOWN_EVERY_N_GAMES and triggers the countdown immediately. */
+export const resetGameStartCount = () => {
+  const armed = COUNTDOWN_EVERY_N_GAMES - 1
+  gameStartCount.value = armed
+  localStorage.setItem(GAME_START_COUNT_KEY, String(armed))
+}
+
 // ─── Persistent Cross-Match State ────────────────────────────────────────────
 
 // Tracks the result of the last finished match so we can bias the next match's
@@ -486,6 +530,7 @@ export const useBaybladeGame = () => {
     trails.clear()
     comboState.clear()
     damageNumbers.length = 0
+    clearCountdown()
     phase.value = 'tap_to_start'
   }
 
@@ -500,6 +545,13 @@ export const useBaybladeGame = () => {
       const audioName = `celebration-${randomInt}`
       playSound(audioName)
     } catch (e: any) {
+    }
+
+    // Track game starts; every Nth launches the countdown overlay
+    gameStartCount.value++
+    localStorage.setItem(GAME_START_COUNT_KEY, String(gameStartCount.value))
+    if (gameStartCount.value % COUNTDOWN_EVERY_N_GAMES === 0) {
+      triggerCountdown()
     }
 
     phase.value = 'meteor_intro'

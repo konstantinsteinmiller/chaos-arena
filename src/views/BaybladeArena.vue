@@ -7,7 +7,7 @@ import FReward from '@/components/atoms/FReward'
 import BaybladeConfigModal from '@/components/organisms/BaybladeConfigModal'
 import OptionsModal from '@/components/organisms/OptionsModal'
 import useSounds from '@/use/useSound'
-import useBaybladeGame, { BLADE_RADIUS, simSpeed } from '@/use/useBaybladeGame'
+import useBaybladeGame, { BLADE_RADIUS, simSpeed, countdownText } from '@/use/useBaybladeGame'
 import useBaybladeConfig from '@/use/useBaybladeConfig'
 import useBaybladeCampaign from '@/use/useBaybladeCampaign'
 import { useHint } from '@/use/useHint'
@@ -355,6 +355,16 @@ onUnmounted(() => {
           div.text-white.italic.game-text(class="text-sm sm:text-lg opacity-60")
             | Click or tap the arena
 
+        //- Every-10th-game countdown — rendered inside the meteor shower ring
+        div(
+          v-else-if="phase === 'meteor_intro' && countdownText"
+          class="text-center"
+        )
+          div.countdown-number.font-black.game-text.text-white(
+            :key="countdownText"
+            class="text-7xl sm:text-9xl"
+          ) {{ countdownText }}
+
         //- Turn Announcement
         div(
           v-else-if="phase === 'deciding_turn' && turnAnnouncement"
@@ -448,8 +458,6 @@ onUnmounted(() => {
       :initial-team="playerTeam"
       @save="onConfigSave"
     )
-
-
 </template>
 
 <style scoped lang="sass">
@@ -464,5 +472,23 @@ onUnmounted(() => {
     opacity: 1
   50%
     opacity: 0.5
+
+
+.countdown-number
+  display: inline-block
+  text-shadow: 0 0 24px rgba(255, 200, 0, 0.85), 0 0 6px rgba(255, 255, 255, 0.6), 0 4px 0 #000
+  animation: countdown-pop 375ms ease-out forwards
+  will-change: transform, opacity
+
+@keyframes countdown-pop
+  0%
+    transform: scale(0.4)
+    opacity: 0
+  20%
+    transform: scale(1)
+    opacity: 1
+  100%
+    transform: scale(2.6)
+    opacity: 0
 
 </style>
