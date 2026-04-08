@@ -26,6 +26,14 @@ export interface Stage {
   enemyTeam: StageBladeConfig[]
   rewardWin: number
   rewardLose: number
+  /**
+   * Number of pinball-style bouncer obstacles placed on the arena floor
+   * for this stage (1-3). Each bouncer behaves like the arena wall —
+   * blades ricochet off it with a small speed boost — so encounters with
+   * bouncers play out very differently from an empty floor. Undefined /
+   * 0 means no bouncers on this stage.
+   */
+  bouncers?: number
 }
 
 // ─── Compact authoring helpers ──────────────────────────────────────────────
@@ -67,7 +75,7 @@ const s = (
   enemyTeam: StageBladeConfig[],
   rewardWin: number,
   rewardLose: number,
-  opts: { isBoss?: boolean; arenaType?: ArenaType } = {}
+  opts: { isBoss?: boolean; arenaType?: ArenaType; bouncers?: number } = {}
 ): Stage => ({ id, name, enemyTeam, rewardWin, rewardLose, ...opts })
 
 // ─── Base 100 Hand-Editable Stages ─────────────────────────────────────────
@@ -115,7 +123,7 @@ const BASE_STAGES: Stage[] = [
     e('star', 'speedy', 2, 2, 'thunderstorm'),
     e('triangle', 'speedy', 2, 1, 'thunder'),
     e('quadratic', 'balanced', 1, 1, 'mysticaleye')
-  ], 160, 50),
+  ], 160, 50, { bouncers: 1 }),
   s(8, 'Champion\'s Gate', [
     e('star', 'balanced', 3, 2, 'fire'),
     e('cushioned', 'tanky', 2, 3, 'castle')
@@ -137,7 +145,7 @@ const BASE_STAGES: Stage[] = [
     e('star', 'speedy', 4, 3, 'fire'),
     e('round', 'tanky', 3, 4, 'turtle'),
     e('quadratic', 'balanced', 3, 3, 'mysticaleye')
-  ], 210, 65, { arenaType: 'lava' }),
+  ], 210, 65, { arenaType: 'lava', bouncers: 2 }),
   s(13, 'Frost Cavern', [
     e('round', 'tanky', 4, 4, 'ice'),
     e('cushioned', 'balanced', 3, 3, 'nature')
@@ -154,7 +162,7 @@ const BASE_STAGES: Stage[] = [
   s(16, 'Obsidian Colosseum', [
     e('star', 'speedy', 5, 4, 'phoenix'),
     e('quadratic', 'tanky', 4, 5, 'castle')
-  ], 240, 75),
+  ], 240, 75, { bouncers: 2 }),
   s(17, 'Volcanic Rift', [
     e('star', 'speedy', 5, 5, 'fire'),
     e('triangle', 'balanced', 5, 4, 'thunderstorm'),
@@ -163,7 +171,7 @@ const BASE_STAGES: Stage[] = [
   s(18, 'Crystal Spire', [
     e('quadratic', 'balanced', 5, 5, 'prisma'),
     e('cushioned', 'tanky', 5, 5, 'nature')
-  ], 250, 75, { arenaType: 'ice' }),
+  ], 250, 75, { arenaType: 'ice', bouncers: 2 }),
   s(19, 'Storm Citadel', [
     e('star', 'speedy', 6, 5, 'thunder'),
     e('triangle', 'speedy', 5, 5, 'bluedragon'),
@@ -194,7 +202,7 @@ const BASE_STAGES: Stage[] = [
     e('star', 'speedy', 7, 7, 'fire'),
     e('triangle', 'speedy', 7, 6, 'snake'),
     e('cushioned', 'tanky', 6, 7, 'wulf')
-  ], 340, 100),
+  ], 340, 100, { bouncers: 1 }),
   // 25 — HEALERS boss (archetype 5)
   s(25, 'The Mending Choir', [
     e('cushioned', 'balanced', 7, 7, 'nature', 'healers'),
@@ -209,11 +217,11 @@ const BASE_STAGES: Stage[] = [
     e('star', 'speedy', 8, 8, 'fire'),
     e('triangle', 'speedy', 8, 8, 'thunder'),
     e('cushioned', 'tanky', 8, 8, 'nature')
-  ], 380, 110, { arenaType: 'lava' }),
+  ], 380, 110, { arenaType: 'lava', bouncers: 3 }),
   s(28, 'Eternal Vortex', [
     e('star', 'speedy', 9, 8, 'snake'),
     e('round', 'tanky', 8, 9, 'shell')
-  ], 370, 105, { arenaType: 'forest' }),
+  ], 370, 105, { arenaType: 'forest', bouncers: 2 }),
   s(29, 'Omega Trials', [
     e('star', 'speedy', 9, 9, 'scorpion'),
     e('triangle', 'speedy', 9, 8, 'eagle'),
@@ -236,7 +244,7 @@ const BASE_STAGES: Stage[] = [
     e('round', 'tanky', 10, 10, 'ice'),
     e('cushioned', 'balanced', 9, 10, 'nature'),
     e('star', 'speedy', 9, 9, 'phoenix')
-  ], 460, 135, { arenaType: 'ice' }),
+  ], 460, 135, { arenaType: 'ice', bouncers: 2 }),
   s(34, 'Arcane Circle', [
     e('quadratic', 'balanced', 10, 10, 'mysticaleye'),
     e('triangle', 'speedy', 10, 9, 'eagle')
@@ -257,7 +265,7 @@ const BASE_STAGES: Stage[] = [
   s(38, 'Sylvan Grove', [
     e('cushioned', 'balanced', 11, 11, 'nature'),
     e('round', 'balanced', 11, 11, 'turtle')
-  ], 480, 140, { arenaType: 'forest' }),
+  ], 480, 140, { arenaType: 'forest', bouncers: 1 }),
   s(39, 'Lightning Coliseum', [
     e('star', 'speedy', 12, 11, 'thunder'),
     e('triangle', 'speedy', 11, 11, 'eagle'),
@@ -275,7 +283,7 @@ const BASE_STAGES: Stage[] = [
     e('star', 'speedy', 13, 12, 'fire'),
     e('cushioned', 'tanky', 12, 13, 'wulf'),
     e('round', 'tanky', 12, 12, 'turtle')
-  ], 540, 160, { arenaType: 'lava' }),
+  ], 540, 160, { arenaType: 'lava', bouncers: 3 }),
   s(43, 'Permafrost', [
     e('round', 'tanky', 13, 13, 'ice'),
     e('quadratic', 'balanced', 12, 12, 'mysticaleye')
@@ -303,7 +311,7 @@ const BASE_STAGES: Stage[] = [
     e('round', 'tanky', 14, 14, 'ice'),
     e('quadratic', 'balanced', 14, 13, 'prisma'),
     e('star', 'speedy', 13, 14, 'phoenix')
-  ], 580, 175, { arenaType: 'ice' }),
+  ], 580, 175, { arenaType: 'ice', bouncers: 3 }),
   s(49, 'Bramble Thicket', [
     e('cushioned', 'balanced', 14, 14, 'nature'),
     e('triangle', 'speedy', 14, 13, 'bluedragon'),
@@ -353,7 +361,7 @@ const BASE_STAGES: Stage[] = [
     e('round', 'tanky', 16, 16, 'ice'),
     e('cushioned', 'balanced', 16, 16, 'shell'),
     e('star', 'speedy', 15, 16, 'thunderstorm')
-  ], 670, 200, { arenaType: 'ice' }),
+  ], 670, 200, { arenaType: 'ice', bouncers: 2 }),
   s(59, 'Voltage Arena', [
     e('star', 'speedy', 17, 16, 'thunder'),
     e('triangle', 'speedy', 16, 17, 'eagle')
@@ -427,7 +435,7 @@ const BASE_STAGES: Stage[] = [
     e('cushioned', 'balanced', 20, 20, 'nature'),
     e('triangle', 'speedy', 20, 19, 'eagle'),
     e('star', 'speedy', 19, 20, 'phoenix')
-  ], 820, 245, { arenaType: 'forest' }),
+  ], 820, 245, { arenaType: 'forest', bouncers: 3 }),
   // 75 — HEALERS boss
   s(75, 'The Hallowed Circle', [
     e('cushioned', 'balanced', 20, 20, 'nature', 'healers'),
@@ -511,7 +519,7 @@ const BASE_STAGES: Stage[] = [
     e('star', 'speedy', 25, 25, 'scorpion'),
     e('piercer', 'speedy', 25, 24, 'snake'),
     e('triangle', 'speedy', 24, 25, 'eagle')
-  ], 1000, 300),
+  ], 1000, 300, { bouncers: 3 }),
   s(92, 'Infernal Throne', [
     e('star', 'speedy', 26, 25, 'fire'),
     e('cushioned', 'tanky', 25, 26, 'castle'),
@@ -584,13 +592,33 @@ const cycleSuffix = (cycle: number): string =>
  * Scaling curves — applied on top of a base stage for cycle `c` ≥ 1.
  *   levels   → +10 per cycle so enemies stay roughly in lockstep with a
  *              player who's been upgrading their own parts.
- *   rewards  → +80% per cycle (linear). Grows forever, and since upgrade
- *              costs also grow linearly with level, the net economy holds.
- *   hpScale  → light multiplicative HP bump per cycle so mid-cycle stages
- *              aren't one-shotted by a well-upgraded player.
+ *   rewards  → +35% per cycle (linear). Intentionally slower than the
+ *              cycle's upgrade-cost growth (which is quadratic via the
+ *              L>10 term in upgradeCost), so every loop tightens the
+ *              economy and makes rewarded-ad tops-up genuinely useful.
  */
 const cycleLevelBonus = (cycle: number) => cycle * 10
-const cycleRewardMul = (cycle: number) => 1 + cycle * 0.8
+const cycleRewardMul = (cycle: number) => 1 + cycle * 0.35
+
+// ── Mid-game reward trim ──────────────────────────────────────────────────
+// Stages 20–100 run on trimmed win rewards so the player keeps bumping
+// into "I need ~100 more coins" moments roughly every few stages — exactly
+// the pressure point where a rewarded video (+100) or the 10-min chest
+// (+100) unlocks the next upgrade tier. Bosses get a softer trim so their
+// milestone payouts still feel like a reward spike.
+const MID_TRIM_START = 20
+const MID_TRIM_END = 100
+const MID_TRIM_REG = 0.55
+const MID_TRIM_BOSS = 0.75
+
+const tightenMidGame = (stage: Stage): Stage => {
+  // NOTE: id here is the BASE-stage id (1..100), so the trim band applies
+  // to the same "slot" of every cycle — the mid-game tightness is a
+  // permanent spine of the campaign, not just a one-time cycle-1 quirk.
+  if (stage.id < MID_TRIM_START || stage.id > MID_TRIM_END) return stage
+  const mul = stage.isBoss ? MID_TRIM_BOSS : MID_TRIM_REG
+  return { ...stage, rewardWin: Math.round(stage.rewardWin * mul) }
+}
 
 /** Produce a scaled copy of a base stage for an arbitrary later cycle. */
 const scaleStage = (base: Stage, targetId: number, cycle: number): Stage => {
@@ -617,10 +645,14 @@ const scaleStage = (base: Stage, targetId: number, cycle: number): Stage => {
  * past 100 auto-generate from the base 100 with ever-increasing difficulty.
  */
 export const getStageById = (id: number): Stage => {
-  if (id < 1) return { ...BASE_STAGES[0]!, id: 1 }
+  if (id < 1) return tightenMidGame({ ...BASE_STAGES[0]!, id: 1 })
   const cycle = Math.floor((id - 1) / BASE_CAMPAIGN_LENGTH)
   const baseIdx = (id - 1) % BASE_CAMPAIGN_LENGTH
-  return scaleStage(BASE_STAGES[baseIdx]!, id, cycle)
+  // Trim BEFORE cycle scaling so the cycle reward multiplier compounds
+  // on top of the already-tightened base — the mid-game squeeze persists
+  // (and grows relatively tighter) in every cycle.
+  const base = tightenMidGame(BASE_STAGES[baseIdx]!)
+  return scaleStage(base, id, cycle)
 }
 
 /**
@@ -654,9 +686,20 @@ export const BOTTOM_UPGRADE_BONUS: Record<BottomPartId, { speed: number; decay: 
   balanced: { speed: 0.04, decay: 0.00018, hp: 2 }   // balanced
 }
 
-/** Cost for upgrading to a given level: 100 + (level - 1) * 20 */
-export const upgradeCost = (toLevel: number): number =>
-  100 + (toLevel - 1) * 20
+/** Cost for upgrading to a given level. Linear base of 100 + (level-1)*20
+ *  plus a quadratic "mid/late game" term that kicks in past level 10 so
+ *  the upgrade economy tightens as enemies reach high levels — keeping
+ *  stage rewards meaningful and ad-pressure present all the way through.
+ *
+ *  Curve:
+ *    L<=10  → unchanged from the old linear formula (forgiving early game)
+ *    L>10   → extra 3*(L-10)² coins per level
+ *    e.g. L=15: +75, L=20: +300, L=25: +675, L=30: +1200
+ */
+export const upgradeCost = (toLevel: number): number => {
+  const extra = toLevel > 10 ? 3 * (toLevel - 10) * (toLevel - 10) : 0
+  return 100 + (toLevel - 1) * 20 + extra
+}
 
 // ─── Persistence ────────────────────────────────────────────────────────────
 

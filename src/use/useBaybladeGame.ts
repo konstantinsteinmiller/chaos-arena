@@ -39,6 +39,14 @@ const WALL_BOUNCE_DECAY_PER_HIT = 0.12
 const WALL_BOUNCE_MIN_EFFECTIVENESS = 0.30
 // Extra padding around the arena so drags near the edge have room
 const ARENA_PADDING = 5
+// Pinball-style bouncer obstacles placed on the arena floor on certain stages.
+// They behave like the arena wall — blades ricochet off them with the same
+// speed-based boost — but each hit is independent of the wall-bounce decay.
+const BOUNCER_RADIUS = 6
+// Band of the arena the bouncer centers can spawn in. Kept away from the
+// very center (where NPCs spawn) and the spawn-row at the bottom.
+const BOUNCER_MIN_R = ARENA_RADIUS * 0.25
+const BOUNCER_MAX_R = ARENA_RADIUS * 0.70
 // Blade needs time to reach full speed after launch
 const ACCEL_FRAMES = 28
 // Pull distance — tuned for mobile screens where screen real estate is
@@ -227,10 +235,30 @@ export const useBaybladeGame = () => {
 
   // ── Animation Frame ──────────────────────────────────────────────────────
   let physicsRafId: number | null = null
+  // Timestamp when game-over was first detected. Used to keep the physics
+  // loop running until active VFX (sparks, damage numbers) finish their
+  // animation before transitioning into the reward phase. Null until game
+  // over is detected, then set once and polled each frame.
+  let gameOverAt: number | null = null
+  // Hard cap so we never stall forever waiting on VFX.
+  const GAME_OVER_VFX_MAX_MS = 1200
 
   // ── Spark VFX ───────────────────────────────────────────────────────────
   const sparkImage = preloadImage(prependBaseUrl('images/vfx/big-spark_1280x256.webp'))
   const activeSparks: SpritesheetAnimation[] = []
+
+  // Pinball-style bouncers placed on the arena floor for certain stages.
+  // Populated by initGame from the stage's `bouncers` count and consumed
+  // by the physics loop (ricochet) + renderArena (visual disc).
+  interface Bouncer {
+    x: number
+    y: number
+    radius: number
+    /** Flash intensity 0..1 — pops to 1 on contact, decays each frame. */
+    flash: number
+  }
+
+  const arenaBouncers: Bouncer[] = []
   const sparkCooldowns = new Map<string, number>() // "a_b" -> last spawn timestamp
   const clashSoundCooldowns = new Map<string, number>()
 
@@ -620,7 +648,8 @@ export const useBaybladeGame = () => {
     pTeam: BaybladeConfig[],
     nTeam: BaybladeConfig[],
     boost = false,
-    arena: ArenaType = 'default'
+    arena: ArenaType = 'default',
+    bouncerCount = 0
   ) => {
     firstGameBoost = boost
     stopPhysics()
@@ -751,6 +780,65 @@ export const useBaybladeGame = () => {
     spikyChipCooldowns.clear()
     healerHealCooldowns.clear()
     damageNumbers.length = 0
+    activeSparks.length = 0
+    gameOverAt = null
+
+    // ── Bouncers: pinball-style obstacles on the arena floor ───────────────
+    // Regenerate positions every match. We place them inside an annulus
+    // (BOUNCER_MIN_R..BOUNCER_MAX_R), enforce a minimum separation from
+    // each other AND from every player + NPC spawn, and never overlap the
+    // arena border. A capped retry count keeps this bounded even if the
+    // annulus is very crowded.
+    arenaBouncers.length = 0
+    const clampedBouncerCount = Math.max(0, Math.min(3, bouncerCount | 0))
+    if (clampedBouncerCount > 0) {
+      const minSepBouncer = BOUNCER_RADIUS * 2 + 12
+      const minSepBlade = BLADE_RADIUS + BOUNCER_RADIUS + 8
+      const spawns: { x: number; y: number }[] = [
+        ...playerBlades.value.map(b => ({ x: b.x, y: b.y })),
+        ...npcBlades.value.map(b => ({ x: b.x, y: b.y }))
+      ]
+      for (let i = 0; i < clampedBouncerCount; i++) {
+        let placed: Bouncer | null = null
+        for (let attempt = 0; attempt < 40 && !placed; attempt++) {
+          const angle = Math.random() * Math.PI * 2
+          const r = BOUNCER_MIN_R + Math.random() * (BOUNCER_MAX_R - BOUNCER_MIN_R)
+          const x = Math.cos(angle) * r
+          const y = Math.sin(angle) * r
+          let ok = true
+          for (const b of arenaBouncers) {
+            if (Math.hypot(b.x - x, b.y - y) < minSepBouncer) {
+              ok = false
+              break
+            }
+          }
+          if (ok) {
+            for (const sp of spawns) {
+              if (Math.hypot(sp.x - x, sp.y - y) < minSepBlade) {
+                ok = false
+                break
+              }
+            }
+          }
+          if (ok) placed = { x, y, radius: BOUNCER_RADIUS, flash: 0 }
+        }
+        // Fall back to a deterministic ring slot if 40 random tries all
+        // collided — better to have a slightly clumped bouncer than to
+        // silently skip the obstacle the stage author asked for.
+        if (!placed) {
+          const slotAngle = (i / clampedBouncerCount) * Math.PI * 2
+          const r = (BOUNCER_MIN_R + BOUNCER_MAX_R) / 2
+          placed = {
+            x: Math.cos(slotAngle) * r,
+            y: Math.sin(slotAngle) * r,
+            radius: BOUNCER_RADIUS,
+            flash: 0
+          }
+        }
+        arenaBouncers.push(placed)
+      }
+    }
+
     clearCountdown()
     phase.value = 'tap_to_start'
   }
@@ -1167,6 +1255,16 @@ export const useBaybladeGame = () => {
 
       // Wall collision with BOOST
       bounceOffWalls(blade)
+      // Pinball-bouncer ricochet (no-op on stages without bouncers)
+      bounceOffBouncers(blade)
+    }
+
+    // Decay bouncer flash intensity back toward 0 so the hit glow fades
+    // out over ~10 frames.
+    if (arenaBouncers.length > 0) {
+      for (const b of arenaBouncers) {
+        if (b.flash > 0) b.flash = Math.max(0, b.flash - 0.1)
+      }
     }
 
     // Record trail points
@@ -1197,15 +1295,26 @@ export const useBaybladeGame = () => {
     if ((playerAlive === 0 || npcAlive === 0) && !gameResult.value) {
       gameResult.value = npcAlive === 0 ? 'win' : 'lose'
       saveLastGameResult(gameResult.value)
-      // Grace period so final spark VFX can finish playing
-      setTimeout(() => {
-        phase.value = 'game_over'
-        stopPhysics()
-      }, 400)
+      gameOverAt = performance.now()
     }
 
-    // Let sparks and damage numbers finish even after game over
-    if (gameResult.value) return
+    // Once game-over is latched, keep the physics loop spinning so spark
+    // and damage-number animations can tick to completion. Transition into
+    // 'game_over' only when all VFX are finished (or a hard cap elapsed);
+    // a fixed setTimeout would freeze mid-animation on any spark spawned
+    // late in the grace window.
+    if (gameResult.value) {
+      if (gameOverAt !== null) {
+        const elapsed = performance.now() - gameOverAt
+        const vfxDone = activeSparks.length === 0 && damageNumbers.length === 0
+        if (vfxDone || elapsed >= GAME_OVER_VFX_MAX_MS) {
+          phase.value = 'game_over'
+          stopPhysics()
+          gameOverAt = null
+        }
+      }
+      return
+    }
 
     // Turn transitions — launched blade must come to rest (or be dead)
     const launched = all.find(b => b.id === launchedBladeId.value)
@@ -1299,6 +1408,50 @@ export const useBaybladeGame = () => {
           color: '#44cc66', isCrit: false
         })
       }
+    }
+  }
+
+  /**
+   * Pinball-style obstacles. Each bouncer is a static disc: if a blade
+   * overlaps it, push the blade out along the contact normal and reflect
+   * its velocity the same way the arena wall does (with the same
+   * speed-based boost) so ramming one feels like ricocheting off the rim.
+   * Unlike the wall, bouncer hits do NOT count toward `wallBounceCount`,
+   * so they don't erode the wall-boost decay budget.
+   */
+  const bounceOffBouncers = (blade: BaybladeState) => {
+    if (arenaBouncers.length === 0) return
+    for (const bouncer of arenaBouncers) {
+      const dx = blade.x - bouncer.x
+      const dy = blade.y - bouncer.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const minDist = blade.radius + bouncer.radius
+      if (dist >= minDist || dist < 0.01) continue
+
+      // Push the blade out along the contact normal so it no longer overlaps.
+      const nx = dx / dist
+      const ny = dy / dist
+      const overlap = minDist - dist
+      blade.x += nx * overlap
+      blade.y += ny * overlap
+
+      const dot = blade.vx * nx + blade.vy * ny
+      // Only reflect if the blade is moving INTO the bouncer (dot < 0).
+      // Blades already moving away (e.g. just nudged out by the separation
+      // step) shouldn't get an extra kick.
+      if (dot >= 0) continue
+
+      const stats = statsFor(blade)
+      const currentSpeed = Math.sqrt(blade.vx * blade.vx + blade.vy * blade.vy)
+      const maxSpeed = BASE_MAX_FORCE * stats.speedMultiplier
+      const speedRatio = Math.min(currentSpeed / maxSpeed, 1)
+      const effectiveBoost = 1 + (WALL_BOOST_FACTOR - 1) * speedRatio
+
+      blade.vx = (blade.vx - 2 * dot * nx) * effectiveBoost
+      blade.vy = (blade.vy - 2 * dot * ny) * effectiveBoost
+
+      bouncer.flash = 1
+      triggerShake('small')
     }
   }
 
@@ -1642,6 +1795,7 @@ export const useBaybladeGame = () => {
     ctx.scale(scale, scale)
 
     renderArena(ctx)
+    renderBouncers(ctx)
     renderMeteorShower(ctx)
     renderTrails(ctx)
 
@@ -1868,6 +2022,66 @@ export const useBaybladeGame = () => {
       ctx.beginPath()
       ctx.arc(0, 0, ARENA_RADIUS - 8, 0, Math.PI * 2)
       ctx.stroke()
+    }
+  }
+
+  /**
+   * Draw pinball-style bouncers. Each bouncer is a stacked disc: a soft
+   * drop-shadow base, a bright cyan rim that pulses on contact, and a
+   * radial highlight to sell the "polished bumper" look.
+   */
+  const renderBouncers = (ctx: CanvasRenderingContext2D) => {
+    if (arenaBouncers.length === 0) return
+    const now = performance.now()
+    const idlePulse = 0.6 + 0.4 * Math.sin(now * 0.005)
+    for (const b of arenaBouncers) {
+      const hit = b.flash
+      const rimAlpha = Math.min(1, 0.55 + hit * 0.45)
+      const glowR = b.radius * (1.8 + hit * 0.8)
+
+      // Outer glow
+      const glow = ctx.createRadialGradient(b.x, b.y, b.radius * 0.8, b.x, b.y, glowR)
+      glow.addColorStop(0, `rgba(120, 220, 255, ${0.35 + hit * 0.4})`)
+      glow.addColorStop(1, 'rgba(120, 220, 255, 0)')
+      ctx.fillStyle = glow
+      ctx.beginPath()
+      ctx.arc(b.x, b.y, glowR, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Drop-shadow base
+      ctx.fillStyle = '#0f1a30'
+      ctx.beginPath()
+      ctx.arc(b.x, b.y + 1.2, b.radius, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Main bumper body — gradient from bright center to darker edge
+      const body = ctx.createRadialGradient(
+        b.x - b.radius * 0.3, b.y - b.radius * 0.3, b.radius * 0.1,
+        b.x, b.y, b.radius
+      )
+      body.addColorStop(0, hit > 0.01 ? '#ffffff' : '#b8e8ff')
+      body.addColorStop(0.55, '#5bb8e8')
+      body.addColorStop(1, '#1a4d7a')
+      ctx.fillStyle = body
+      ctx.beginPath()
+      ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Rim
+      ctx.strokeStyle = `rgba(180, 240, 255, ${rimAlpha * idlePulse})`
+      ctx.lineWidth = 1.5
+      ctx.shadowColor = '#8fdfff'
+      ctx.shadowBlur = 6 + hit * 10
+      ctx.beginPath()
+      ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.shadowBlur = 0
+
+      // Tiny white highlight for polish
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
+      ctx.beginPath()
+      ctx.arc(b.x - b.radius * 0.35, b.y - b.radius * 0.35, b.radius * 0.22, 0, Math.PI * 2)
+      ctx.fill()
     }
   }
 

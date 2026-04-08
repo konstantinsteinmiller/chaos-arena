@@ -82,8 +82,11 @@ const handleTabChange = (val: string | number) => {
 
           div(class="modal-frame relative bg-[#1a2b4b] border-[5px] border-[#0f1a30] rounded-[1.25rem] sm:rounded-[2rem] pt-7 pb-0 px-2 sm:px-4 sm:pt-6 md:p-8 md:pb-2 md:pt-10")
 
-            //- Close Button (X)
-            div.p-3.cursor-pointer(v-if="isClosable" @click="close")
+            //- Close Button (X) — wrapper is purely a layout spacer for
+            //- the absolutely-positioned X button; it must NOT also close
+            //- the modal, otherwise the empty padded strip at the top of
+            //- every modal's content becomes an invisible "close" hitbox.
+            div.p-3(v-if="isClosable")
               button(
                 v-if="isClosable"
                 @click="close"

@@ -16,6 +16,8 @@ import type { BaybladeConfig } from '@/types/bayblade'
 import useUser, { isMobileLandscape, isMobilePortrait } from '@/use/useUser'
 import IconCoin from '@/components/icons/IconCoin.vue'
 import DailyRewards from '@/components/organisms/DailyRewards.vue'
+import BattlePass from '@/components/organisms/BattlePass.vue'
+import useBattlePass from '@/use/useBattlePass'
 import TreasureChest from '@/components/organisms/TreasureChest.vue'
 import AdRewardButton from '@/components/organisms/AdRewardButton.vue'
 import CoinBadge from '@/components/organisms/CoinBadge.vue'
@@ -67,6 +69,13 @@ const { t } = useI18n()
 const { playSound } = useSounds()
 
 const { setSettingValue } = useUser()
+
+// Battle Pass — xp awards are fired from the game-over watcher below.
+const {
+  awardCampaignWin: bpAwardCampaignWin,
+  awardLeaderboardWin: bpAwardLeaderboardWin,
+  awardLoss: bpAwardLoss
+} = useBattlePass()
 
 // ─── Canvas Refs ───────────────────────────────────────────────────────────
 
@@ -147,7 +156,7 @@ watch(stageReinitSignal, () => {
   showReward.value = false
   ghostMode.value = false
   ghostEnemy.value = null
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0)
 })
 
 // ─── Computed ──────────────────────────────────────────────────────────────
@@ -328,6 +337,13 @@ watch(isGameOver, (over) => {
       advanceStage()
       recordPlayerStage(currentStageId.value)
     }
+    // Battle Pass xp — campaign/leaderboard wins and losses feed the BP.
+    if (gameResult.value === 'win') {
+      if (ghostMode.value) bpAwardLeaderboardWin()
+      else bpAwardCampaignWin()
+    } else if (gameResult.value === 'lose') {
+      bpAwardLoss()
+    }
     coinsAwarded.value = true
     showReward.value = true
   }
@@ -341,7 +357,7 @@ const onRewardContinue = () => {
     ghostMode.value = false
     ghostEnemy.value = null
   }
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0)
 }
 
 // ─── Leaderboard / Ghost Fight ────────────────────────────────────────────
@@ -368,7 +384,7 @@ const onOpenConfig = () => {
 
 const onConfigSave = (team: BaybladeConfig[]) => {
   saveTeam(team)
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0)
 }
 
 // ─── Lifecycle ─────────────────────────────────────────────────────────────
@@ -398,7 +414,7 @@ onMounted(() => {
   window.visualViewport?.addEventListener('resize', onViewportChange)
   window.visualViewport?.addEventListener('scroll', onViewportChange)
 
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0)
   renderRafId = requestAnimationFrame(renderLoop)
 
   recordPlayerStage(currentStageId.value)
@@ -517,8 +533,24 @@ onUnmounted(() => {
           div.text-white.italic.game-text(class="text-xs sm:text-sm opacity-50")
             | Tap a blade, then drag to launch
 
-      //- Bottom-left daily rewards (button + modal, fully self-contained)
-      DailyRewards(v-if="showConfigButton && !showReward && currentStageId >= 3")
+      //- Bottom-left button row: Daily Rewards → Ad Reward → Battle Pass.
+      //- Wrapped in a single fixed flex container so mobile (scale-80)
+      //- and desktop (scale-110) both space cleanly without overlap.
+      //- Each child component is positionless; this row owns the anchoring.
+      div(
+        v-if="showConfigButton && !showReward"
+        class="fixed pointer-events-auto z-50 flex items-end gap-0 sm:gap-2"
+        :style="{\
+          bottom: `calc(0.5rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)`,\
+          left: 'calc(0.5rem + env(safe-area-inset-left, 0px))'\
+        }"
+      )
+        DailyRewards(v-if="currentStageId >= 3")
+        AdRewardButton(
+          v-if="currentStageId >= 3"
+          :coins="adRewardCoins"
+        )
+        BattlePass(v-if="currentStageId >= 6")
       FMuteButton(
         v-if="showConfigButton"
         class="fixed"
@@ -528,50 +560,46 @@ onUnmounted(() => {
         }"
       )
 
-      //- Bottom-right buttons (always visible when not in reward overlay)
+      //- Bottom-right buttons — two stacked rows:
+      //-   row 1: 1x/2x speed switch (alone so it doesn't inflate col width)
+      //-   row 2: fake leaderboard → settings → team config
       div(
         v-if="showConfigButton && !showReward"
-        class="fixed pointer-events-auto z-50 flex gap-2 items-end"
+        class="fixed pointer-events-auto z-50 flex flex-col items-end gap-2"
         :style="{\
           bottom: `calc(0.5rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)`,\
           right: 'calc(0.5rem + env(safe-area-inset-right, 0px))'\
         }"
       )
-        //- Ad reward button (rewarded video → coins, fully self-contained)
-        AdRewardButton(
-          v-if="currentStageId >= 3"
-          :coins="adRewardCoins"
+        //- Row 1: speed switch on its own so the full-width col isn't forced
+        FButtonSwitch.speedup-switch.scale-90(
+          v-if="isCrazySDKIntegrated"
+          class="sm:scale-100"
+          :model-value="simSpeed"
+          :options="[{ value: 1 }, { value: 2 }]"
+          @click="onSpeedSwitchClick"
         )
+          template(#default="{ option }") {{ option.value }}x
+          template(#hint="{ option }")
+            //- Movie hint icon — only under the 2x button when boost not yet earned
+            img.absolute.object-contain.pointer-events-none(
+              v-if="option.value === 2 && simSpeed === 1 && !is2xAvailable"
+              src="/images/icons/movie_128x96.webp"
+              class="right-0 top-1/2 -translate-y-[50%] h-3 w-3 mr-1.5"
+            )
 
-        //- Fake leaderboard (button + paginated modal, fully self-contained)
-        FakeLeaderBoard(
-          v-if="currentStageId >= 5 && !ghostMode"
-          @fight="onGhostFight"
-        )
-
-        FIconButton(
-          type="secondary"
-          size="md"
-          :img-src="prependBaseUrl('images/icons/gears_128x128.webp')"
-          @click="showOptions = true"
-        )
-        //- Speed switch (above team config) + team config button column
-        div.flex.flex-col.items-center.gap-2
-          FButtonSwitch.speedup-switch.scale-90(
-            v-if="isCrazySDKIntegrated"
-            class="sm:scale-100"
-            :model-value="simSpeed"
-            :options="[{ value: 1 }, { value: 2 }]"
-            @click="onSpeedSwitchClick"
+        //- Row 2: leaderboard → settings → team (team sits right of settings)
+        div.flex.items-end(class="gap-0 sm:gap-1")
+          FakeLeaderBoard(
+            v-if="currentStageId >= 5 && !ghostMode"
+            @fight="onGhostFight"
           )
-            template(#default="{ option }") {{ option.value }}x
-            template(#hint="{ option }")
-              //- Movie hint icon — only under the 2x button when boost not yet earned
-              img.absolute.object-contain.pointer-events-none(
-                v-if="option.value === 2 && simSpeed === 1 && !is2xAvailable"
-                src="/images/icons/movie_128x96.webp"
-                class="right-0 top-1/2 -translate-y-[50%] h-3 w-3 mr-1.5"
-              )
+          FIconButton(
+            type="secondary"
+            size="md"
+            :img-src="prependBaseUrl('images/icons/gears_128x128.webp')"
+            @click="showOptions = true"
+          )
           FIconButton(
             v-if="hasFirstWin || currentStageId >= 2"
             type="secondary"

@@ -4,7 +4,6 @@ import FModal from '@/components/molecules/FModal'
 import FIconButton from '@/components/atoms/FIconButton.vue'
 import IconCoin from '@/components/icons/IconCoin.vue'
 import useBaybladeConfig from '@/use/useBaybladeConfig'
-import useBottomSafe from '@/use/useBottomSafe'
 import {
   SKINS_PER_TOP,
   MODEL_LABELS,
@@ -16,7 +15,6 @@ import {
 import type { TopPartId } from '@/types/bayblade'
 
 const { addCoins } = useBaybladeConfig()
-const { bottomGapPx } = useBottomSafe()
 
 // ─── Daily Rewards Config ────────────────────────────────────────────────────
 
@@ -189,14 +187,8 @@ const collect = (dayIndex: number) => {
 </script>
 
 <template lang="pug">
-  //- Bottom-left open-modal button
-  div.daily-rewards.fixed(
-    class="pointer-events-auto z-50"
-    :style="{\
-      bottom: `calc(0.5rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)`,\
-      left: 'calc(0.5rem + env(safe-area-inset-left, 0px))'\
-    }"
-  )
+  //- Open-modal button (positioned by parent flex row in BaybladeArena)
+  div.daily-rewards
     button.group.cursor-pointer.z-10.transition-transform(
       class="hover:scale-[103%] active:scale-90 scale-80 sm:scale-110"
       :class="{ 'hint-bounce': hasDailyRewardReady }"
@@ -205,7 +197,7 @@ const collect = (dayIndex: number) => {
       div.relative
         div.absolute.inset-0.translate-y-1.rounded-lg(class="bg-[#1a2b4b]")
         div.relative.rounded-lg.border-2.text-white.font-bold.flex.flex-col.items-center.px-3.py-1(
-          class="bg-gradient-to-b from-[#ffcd00] to-[#f7a000] border-[#0f1a30]"
+          class="bg-gradient-to-b from-[#ffcd00] to-[#f7a000] border-[#0f1a30] pt-2 sm:pt-1"
         )
           span.font-black.game-text.leading-tight(class="text-[10px] sm:text-xs") +{{ DAILY_REWARDS[state.currentDay] }}
           IconCoin(class="w-5 h-5 text-yellow-300")
