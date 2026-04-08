@@ -27,7 +27,7 @@ export interface TopPart {
   damageMultiplier: number
   defenseMultiplier: number
   healthBonus: number
-  shape: 'star' | 'triangle' | 'circle' | 'square' | 'cushion' | 'piercer'
+  shape: 'star' | 'spiky' | 'circle' | 'square' | 'cushion' | 'piercer'
 }
 
 export interface BottomPart {

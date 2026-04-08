@@ -116,12 +116,26 @@ const bottomHp = (part: typeof BOTTOM_PARTS_LIST[number]) =>
 
 const setTop = (id: TopPartId) => {
   const idx = activeBladeIndex.value as number
+  // Tapping the already-selected top part acts as a shortcut to the
+  // upgrade button — more discoverable than the small ⬆ row, especially
+  // on mobile. Only upgrades if the player can actually afford it,
+  // otherwise the tap is a no-op (the card is already selected).
+  if (localTeam.value[idx]?.topPartId === id) {
+    if (coins.value >= upgradeCost(topLevel(id) + 1)) buyTopUpgrade(id)
+    return
+  }
   localTeam.value[idx] = { ...localTeam.value[idx], topPartId: id }
   emit('save', localTeam.value.map(c => ({ ...c })))
 }
 
 const setBottom = (id: BottomPartId) => {
   const idx = activeBladeIndex.value as number
+  // Same shortcut behavior as setTop — tapping the selected bottom
+  // triggers an upgrade if affordable.
+  if (localTeam.value[idx]?.bottomPartId === id) {
+    if (coins.value >= upgradeCost(bottomLevel(id) + 1)) buyBottomUpgrade(id)
+    return
+  }
   localTeam.value[idx] = { ...localTeam.value[idx], bottomPartId: id }
   emit('save', localTeam.value.map(c => ({ ...c })))
 }

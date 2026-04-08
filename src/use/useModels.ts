@@ -23,7 +23,7 @@ export type BaybladeModelId = (typeof BAYBLADE_MODEL_IDS)[number]
 /** Maps each top part to a player and default NPC model image */
 export const BAYBLADE_MODEL_MAP: Record<TopPartId, { player: BaybladeModelId; npc: BaybladeModelId }> = {
   star: { player: 'fire', npc: 'phoenix' },
-  triangle: { player: 'thunder', npc: 'bluedragon' },
+  triangle: { player: 'thunder', npc: 'thunderstorm' },
   round: { player: 'turtle', npc: 'ice' },
   quadratic: { player: 'chip', npc: 'mysticaleye' },
   cushioned: { player: 'nature', npc: 'wulf' },
@@ -53,8 +53,12 @@ export const MODEL_LABELS: Record<BaybladeModelId, string> = {
 
 /** Available skins per top part (default skin is always first and free) */
 export const SKINS_PER_TOP: Record<TopPartId, BaybladeModelId[]> = {
-  star: ['fire', 'phoenix', 'thunderstorm'],
-  triangle: ['thunder', 'bluedragon', 'eagle'],
+  // "star" top keeps its bold elemental roster. Swapped thunderstorm out
+  // to give the new spiky ("triangle") top a jagged-themed lineup.
+  star: ['fire', 'phoenix', 'bluedragon'],
+  // Spiky top — jagged / barbed aesthetic (thunder bolts, thunderstorm,
+  // razor-winged eagle).
+  triangle: ['thunder', 'thunderstorm', 'eagle'],
   round: ['turtle', 'ice', 'shell'],
   quadratic: ['chip', 'mysticaleye', 'prisma'],
   cushioned: ['nature', 'wulf', 'castle'],

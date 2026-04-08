@@ -7,7 +7,7 @@
     "standalone"
   ],
   "orientation": "portrait",
-  "start_url": "/",
+  "start_url": "/chaos-arena/#/battle",
   "scope": "/",
   "theme_color": "#0d1117",
   "background_color": "#0d1117",

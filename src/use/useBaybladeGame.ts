@@ -238,6 +238,13 @@ export const useBaybladeGame = () => {
   const CRIT_COOLDOWN_MS = 1500
   const lastCritAt = new Map<number, number>()
 
+  // Spiky top — flat chip damage applied on every collision pair, independent
+  // of closing speed. Lets a "hugging" spiky blade keep pressuring a faster
+  // opponent at low speeds. Throttled per pair so DPS stays in check.
+  const SPIKY_FLAT_DAMAGE = 1
+  const SPIKY_CHIP_COOLDOWN_MS = 150
+  const spikyChipCooldowns = new Map<string, number>() // "a_b" -> last chip timestamp
+
   // ── Blade Model Images ──────────────────────────────────────────────────
   const bladeModelImages = new Map<string, HTMLImageElement>()
 
@@ -536,6 +543,7 @@ export const useBaybladeGame = () => {
     trails.clear()
     comboState.clear()
     lastCritAt.clear()
+    spikyChipCooldowns.clear()
     damageNumbers.length = 0
     clearCountdown()
     phase.value = 'tap_to_start'
@@ -1268,6 +1276,35 @@ export const useBaybladeGame = () => {
       if (a.hp <= 0) hadKill = true
       a.hitFlash = HIT_FLASH_FRAMES
       spawnDamageNumber(cx, cy, dmg, b.owner, isCrit)
+    }
+
+    // Spiky top — flat "barbs" damage on every collision pair, independent
+    // of closing speed. Rewards hugging / low-speed chasing with constant
+    // chip damage. Throttled per pair so the DPS stays in check. Still
+    // respects back-hit direction so you can't chip someone by getting
+    // rear-ended.
+    {
+      const spikyKey = a.id < b.id ? `${a.id}_${b.id}` : `${b.id}_${a.id}`
+      const nowChip = performance.now()
+      const lastChip = spikyChipCooldowns.get(spikyKey) ?? 0
+      if (nowChip - lastChip >= SPIKY_CHIP_COOLDOWN_MS) {
+        let chipped = false
+        if (a.config.topPartId === 'triangle' && !aHitInBack && b.hp > 0) {
+          b.hp = Math.max(0, b.hp - SPIKY_FLAT_DAMAGE)
+          if (b.hp <= 0) hadKill = true
+          b.hitFlash = HIT_FLASH_FRAMES
+          spawnDamageNumber(cx, cy, SPIKY_FLAT_DAMAGE, a.owner, false)
+          chipped = true
+        }
+        if (b.config.topPartId === 'triangle' && !bHitInBack && a.hp > 0) {
+          a.hp = Math.max(0, a.hp - SPIKY_FLAT_DAMAGE)
+          if (a.hp <= 0) hadKill = true
+          a.hitFlash = HIT_FLASH_FRAMES
+          spawnDamageNumber(cx, cy, SPIKY_FLAT_DAMAGE, b.owner, false)
+          chipped = true
+        }
+        if (chipped) spikyChipCooldowns.set(spikyKey, nowChip)
+      }
     }
 
     if (hadKill || hadCrit) triggerShake('big')

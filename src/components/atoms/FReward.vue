@@ -4,6 +4,12 @@
     div.fixed.inset-0.flex.flex-col.items-center.justify-center.backdrop-blur-md.p-4.touch-none.cursor-pointer(
       v-if="modelValue"
       class="z-[100] bg-black/60"
+      :style="{\
+        paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))',\
+        paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))',\
+        paddingLeft: 'calc(1rem + env(safe-area-inset-left, 0px))',\
+        paddingRight: 'calc(1rem + env(safe-area-inset-right, 0px))'\
+      }"
       @click="handleOverlayClick"
     )
       //- Parchment ribbon header

@@ -35,7 +35,16 @@ const handleTabChange = (val: string | number) => {
     enter-from-class="opacity-0 scale-50 translate-y-12"
     leave-to-class="opacity-0 scale-50 translate-y-12"
   )
-    div(v-if="modelValue" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4")
+    div(
+      v-if="modelValue"
+      class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
+      :style="{\
+        paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))',\
+        paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))',\
+        paddingLeft: 'calc(1rem + env(safe-area-inset-left, 0px))',\
+        paddingRight: 'calc(1rem + env(safe-area-inset-right, 0px))'\
+      }"
+    )
       //- Backdrop
       div(class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="close")
 
@@ -55,12 +64,13 @@ const handleTabChange = (val: string | number) => {
               @update:model-value="handleTabChange"
               @click.stop
               :options="tabs"
+              class="mx-auto w-max !px-0"
             )
 
           //- CASE 2: Single Title Ribbon
           template(v-else-if="title")
-            div(class="flex justify-center scale-70 sm:scale-100" @click.stop)
-              div(class="relative")
+            div(class="flex justify-center scale-70 sm:scale-100")
+              div(class="ribbon-header relative" @click.stop)
                 div(class="absolute inset-0 translate-y-1 rounded-lg bg-[#1a2b4b]")
                 div(class="relative flex items-center justify-center bg-gradient-to-b from-[#ffcd00] to-[#f7a000] border-4 border-[#0f1a30] px-10 py-2 rounded-xl")
                   span(class="brawl-text text-2xl md:text-3xl text-white uppercase tracking-wider whitespace-nowrap")
@@ -73,13 +83,13 @@ const handleTabChange = (val: string | number) => {
           div(class="modal-frame relative bg-[#1a2b4b] border-[5px] border-[#0f1a30] rounded-[1.25rem] sm:rounded-[2rem] pt-7 pb-0 px-2 sm:px-4 sm:pt-6 md:p-8 md:pb-2 md:pt-10")
 
             //- Close Button (X)
-            div.p-3(v-if="isClosable" @click="close")
+            div.p-3.cursor-pointer(v-if="isClosable" @click="close")
               button(
                 v-if="isClosable"
                 @click="close"
                 class="hover:scale-[103%] -mt-4 -mr-4 absolute top-0 right-0 group cursor-pointer transition-transform \
                        active:scale-40 sm:active:scale-90 scale-70 sm:scale-100 sm:top-2 sm:right-2 md:top-3 md:right-3"
-                :class="{ '-mt-6 -mr-5': isMobileLandscape,  '-mt-6 -mr-6': !isMobileLandscape && !isMobilePortrait }"
+                :class="{ 'scale-100': isMobilePortrait,  '-mt-6 -mr-5': isMobileLandscape,  '-mt-6 -mr-6': !isMobileLandscape && !isMobilePortrait }"
               )
                 div(class="relative")
                   div(class="absolute inset-0 translate-y-1 rounded-lg bg-[#6b1212]")

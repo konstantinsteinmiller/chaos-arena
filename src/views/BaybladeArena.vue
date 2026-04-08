@@ -27,6 +27,7 @@ import StageBadge from '@/components/StageBadge.vue'
 import FakeLeaderBoard from '@/components/organisms/FakeLeaderBoard.vue'
 import useLeaderboard, { type LeaderboardEntry } from '@/use/useLeaderboard'
 import { isCrazySDKIntegrated } from '@/use/useMatch.ts'
+import useBottomSafe from '@/use/useBottomSafe'
 
 // ─── Game & Config ─────────────────────────────────────────────────────────
 
@@ -204,6 +205,17 @@ const updateCanvasSize = () => {
   canvas.height = canvasHeight.value
 }
 
+// ─── Bottom-Row Visibility Guard ──────────────────────────────────────────
+//
+// `useBottomSafe` computes the gap between the layout viewport and the
+// actually-visible visual viewport (i.e. the strip hidden behind URL bar /
+// browser chrome on Android Chrome and Safari). The shared `bottomGapPx`
+// pixel value is consumed by every bottom-anchored element so they all stay
+// in sync. We deliberately do NOT re-measure on phase change — the value
+// only depends on viewport metrics, not on which buttons are mounted.
+
+const { bottomGapPx, scheduleBottomMeasure } = useBottomSafe()
+
 // ─── Pointer Event Handlers ────────────────────────────────────────────────
 
 const getGameCoords = (e: PointerEvent) => {
@@ -330,10 +342,18 @@ const renderLoop = () => {
   renderRafId = requestAnimationFrame(renderLoop)
 }
 
+const onViewportChange = () => {
+  updateCanvasSize()
+  scheduleBottomMeasure()
+}
+
 onMounted(() => {
   updateCanvasSize()
-  window.addEventListener('resize', updateCanvasSize)
-  window.visualViewport?.addEventListener('resize', updateCanvasSize)
+  scheduleBottomMeasure()
+  window.addEventListener('resize', onViewportChange)
+  window.addEventListener('orientationchange', onViewportChange)
+  window.visualViewport?.addEventListener('resize', onViewportChange)
+  window.visualViewport?.addEventListener('scroll', onViewportChange)
 
   initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType)
   renderRafId = requestAnimationFrame(renderLoop)
@@ -345,8 +365,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateCanvasSize)
-  window.visualViewport?.removeEventListener('resize', updateCanvasSize)
+  window.removeEventListener('resize', onViewportChange)
+  window.removeEventListener('orientationchange', onViewportChange)
+  window.visualViewport?.removeEventListener('resize', onViewportChange)
+  window.visualViewport?.removeEventListener('scroll', onViewportChange)
   stopPhysics()
   if (renderRafId !== null) cancelAnimationFrame(renderRafId)
   if (speedBoostIntervalId !== null) clearInterval(speedBoostIntervalId)
@@ -358,12 +380,15 @@ onUnmounted(() => {
 <template lang="pug">
   div.arena.relative.w-screen.overflow-hidden.flex.items-center.justify-center(
     class="bg-[#0d1117] h-screen h-dvh"
-    :style="shakeStyle"
   )
     //- Logo Preloader
     FLogoProgress
 
     //- Game Canvas
+    //- Screen-shake transform lives ONLY on the canvas, not on .arena, so
+    //- the HUD's `position: fixed` buttons stay anchored to the real viewport.
+    //- Putting a `transform` on .arena would promote it to a containing block
+    //- for fixed descendants, and `overflow-hidden` would then clip them.
     canvas(
       ref="canvasRef"
       @pointerdown="onPointerDown"
@@ -372,13 +397,24 @@ onUnmounted(() => {
       @pointercancel="onPointerLeave"
       @pointerleave="onPointerLeave"
       class="block touch-none"
+      :style="shakeStyle"
     )
 
     //- HUD Overlay
     div.absolute.inset-0.pointer-events-none
 
       //- Top bar: stage + coins
-      div.flex.justify-between.items-start(class="p-2 sm:p-2")
+      //- safe-area-inset-* keeps the row clear of the iPhone notch /
+      //- Dynamic Island and (in landscape) the side cutouts when running as
+      //- a standalone PWA with viewport-fit=cover.
+      div.flex.justify-between.items-start(
+        class="p-2 sm:p-2"
+        :style="{\
+          paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))',\
+          paddingLeft: 'calc(0.5rem + env(safe-area-inset-left, 0px))',\
+          paddingRight: 'calc(0.5rem + env(safe-area-inset-right, 0px))'\
+        }"
+      )
         //- Stage indicator (fancy themed badge) — hidden during a ghost fight
         StageBadge(
           v-if="!ghostMode"
@@ -432,7 +468,8 @@ onUnmounted(() => {
         //- Player turn hint
         div(
           v-else-if="phase === 'player_turn'"
-          class="absolute bottom-16 sm:bottom-20 text-center"
+          class="absolute text-center"
+          :style="{ bottom: `calc(4rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)` }"
         )
           div.text-white.italic.game-text(class="text-xs sm:text-sm opacity-50")
             | Tap a blade, then drag to launch
@@ -441,15 +478,21 @@ onUnmounted(() => {
       DailyRewards(v-if="showConfigButton && !showReward && currentStageId >= 3")
       FMuteButton(
         v-if="showConfigButton"
-        class="left-2 sm:left-4 fixed"
-        :style="{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' }"
+        class="fixed"
+        :style="{\
+          bottom: `calc(4.5rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)`,\
+          left: 'calc(0.5rem + env(safe-area-inset-left, 0px))'\
+        }"
       )
 
       //- Bottom-right buttons (always visible when not in reward overlay)
       div(
         v-if="showConfigButton && !showReward"
-        class="fixed bottom-2 right-2 sm:bottom-3 sm:right-3 pointer-events-auto z-50 flex gap-2 items-end"
-        :style="{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }"
+        class="fixed pointer-events-auto z-50 flex gap-2 items-end"
+        :style="{\
+          bottom: `calc(0.5rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)`,\
+          right: 'calc(0.5rem + env(safe-area-inset-right, 0px))'\
+        }"
       )
         //- Ad reward button (rewarded video → coins, fully self-contained)
         AdRewardButton(

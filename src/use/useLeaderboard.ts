@@ -101,17 +101,37 @@ const generateBlade = (stage: number): BaybladeConfig => ({
   modelId: rand(FAKE_MODEL_IDS)
 })
 
-// Textual suffixes used to disambiguate when the player count exceeds the
-// name pool. We deliberately avoid numeric suffixes (e.g. "Farter2") since
-// the names should read like real kid handles, not auto-generated ones.
-const NAME_SUFFIXES = ['Jr', 'Pro', 'X', 'Max', 'Z', 'Lord', 'Boss', 'Mega', 'Ultra', 'Ace']
+// Textual suffix pool. Empty strings are intentionally included so a
+// chunk of names stay bare. The rest mixes generic "cool" tags with
+// gamer / streamer culture references appropriate for ages 6–15.
+// We deliberately avoid numeric suffixes and any taunting tags
+// (e.g. "EZ", "Noob") since names should read like real kid handles.
+const NAME_SUFFIXES = [
+  // ~30% bare
+  '', '', '', '', '', '', '', '', '', '', '', '',
+  // generic / cool
+  'Jr', 'Pro', 'X', 'MVP', 'Max', 'Z', 'Boss', 'Mega', 'Ace', 'Prime',
+  // gamer / streamer / meme culture
+  'Kong', 'Lol', 'Rofl', 'WTF', 'Pig', 'Lel', 'Kack', 'JustChat', 'GG', 'YT', 'TV', 'OP', 'AFK',
+  'Goat', 'Lame', 'Tuber', 'Mate', 'Bro', 'Brah', 'Dude', 'Fam', 'Hype', 'Wow', 'Sus', 'Yeet', 'Fock', 'Type'
+]
+const NAME_PREFIXES = [
+  // ~30% bare
+  '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
+  // generic / cool
+  'The', 'Hyper', 'Mega', 'Super', 'Dipshit', 'Focker', 'Lick', 'Jim', 'Jane', 'Pipi',
+  // gamer / streamer / meme culture
+  'Tum', 'Luck', 'Chang', 'Ching', 'Kar', 'Fly', 'Hammer', 'Giga', 'GG',
+  'Goat', 'Lame', 'Tuber', 'Bro', 'Brahhh', 'Hype', 'Sus'
+]
 
 const makeName = (i: number): string => {
   const base = FAKE_NAMES[i % FAKE_NAMES.length] ?? 'Rival'
-  const suffixIdx = Math.floor(i / FAKE_NAMES.length)
-  if (suffixIdx === 0) return base
-  const suffix = NAME_SUFFIXES[(suffixIdx - 1) % NAME_SUFFIXES.length]!
-  return `${base}${suffix}`
+  // Pick a random suffix (often empty) so names feel naturally varied
+  // instead of every "round" sharing the same suffix.
+  const suffix = NAME_SUFFIXES[Math.floor(Math.random() * NAME_SUFFIXES.length)]!
+  const prefix = NAME_PREFIXES[Math.floor(Math.random() * NAME_PREFIXES.length)]!
+  return suffix || prefix ? `${prefix}${base}${suffix}` : base
 }
 
 // ─── Persistence ────────────────────────────────────────────────────────────

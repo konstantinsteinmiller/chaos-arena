@@ -21,13 +21,18 @@ export const TOP_PARTS: Record<TopPartId, TopPart> = {
     healthBonus: 0,
     shape: 'star'
   },
+  // "Spiky" — mediocre speed-based damage scaling, but its barbs chip a
+  // small flat amount of HP on *every* collision. Hugging / closely chasing
+  // an enemy turns into constant pressure even at low speeds. The flat
+  // chip is applied per collision pair with a cooldown (see
+  // SPIKY_CHIP_COOLDOWN_MS in useBaybladeGame) so the DPS stays in check.
   triangle: {
     id: 'triangle',
-    label: 'Tri Edge',
-    damageMultiplier: 1.4,
-    defenseMultiplier: 0.9,
+    label: 'Spiky',
+    damageMultiplier: 1.1,
+    defenseMultiplier: 0.95,
     healthBonus: 5,
-    shape: 'triangle'
+    shape: 'spiky'
   },
   round: {
     id: 'round',

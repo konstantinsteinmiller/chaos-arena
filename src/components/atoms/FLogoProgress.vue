@@ -83,8 +83,14 @@ const sizeStyle = computed(() => {
 
 const positionStyle = computed(() => {
   if (done.value) {
-    // Top-left below stage badge (~52px down, 12px left)
-    return { top: '52px', left: '12px', transform: 'none' }
+    // Top-left below stage badge (~52px down, 12px left). Add safe-area
+    // insets so the logo clears the iPhone notch / Dynamic Island in
+    // portrait and the side cutout in landscape PWA standalone mode.
+    return {
+      top: 'calc(52px + env(safe-area-inset-top, 0px))',
+      left: 'calc(12px + env(safe-area-inset-left, 0px))',
+      transform: 'none'
+    }
   }
   // Centered
   return {
