@@ -6,7 +6,9 @@ import type {
   GamePhase,
   GameResult,
   MeteorParticle,
-  SpritesheetAnimation
+  SpritesheetAnimation,
+  Powerup,
+  PowerupStat
 } from '@/types/bayblade'
 import type { ArenaType } from '@/use/useBaybladeCampaign'
 import { computeStats } from '@/use/useBaybladeConfig'
@@ -61,6 +63,33 @@ const ACCEL_FRAMES = 28
 const MAX_PULL_RATIO = 0.51
 
 export const MAX_PULL_DISTANCE = ARENA_RADIUS * MAX_PULL_RATIO
+
+// ─── Arena Powerups ─────────────────────────────────────────────────────────
+// Stat-boost crates that pop out of the arena floor mid-match. Spawning is
+// driven by the physics loop (so the timer counts "simulated arena time" —
+// it freezes whenever the loop is paused). The first blade to touch a fully
+// grown crate gets the buff applied for the rest of the match and the crate
+// disintegrates with a small VFX. See `updatePowerups` for the lifecycle and
+// `renderPowerups` for the 3d-box visual.
+const POWERUP_DEFAULT_INTERVAL_MIN_MS = 10000
+const POWERUP_DEFAULT_INTERVAL_MAX_MS = 15000
+// How long an un-collected powerup stays on the floor before it begins to
+// disintegrate. Long enough that the player has time to redirect a launch
+// toward it but short enough that stale crates don't pile up.
+const POWERUP_LIFETIME_MS = 10000
+const POWERUP_GROW_MS = 350
+const POWERUP_OVERGROW_MS = 250
+const POWERUP_SETTLE_MS = 200
+const POWERUP_VANISH_MS = 280
+const POWERUP_FINAL_SCALE = 0.85
+const POWERUP_OVERGROW_SCALE = 1.15
+// Collision radius at full visual size, expressed as a fraction of the blade
+// radius so it scales with the screen-size override at module init.
+const POWERUP_RADIUS_FRACTION = 0.42
+// Per-pickup buff multiplier applied to the touched stat.
+const POWERUP_BUFF_MULTIPLIER = 1.25
+// Possible stat targets — kept here so the spawner can roll one at random.
+const POWERUP_STATS: readonly PowerupStat[] = ['attack', 'defense', 'speed']
 
 // Spark VFX
 const SPARK_FRAME_DURATION = 40 // ms per frame
@@ -238,6 +267,27 @@ export const useBaybladeGame = () => {
   // ── Meteor Shower Particles ──────────────────────────────────────────────
   const meteorParticles: Ref<MeteorParticle[]> = ref([])
   let meteorIntroTimer = 0
+
+  // ── Arena Powerups ───────────────────────────────────────────────────────
+  // Reactive so a test scene UI can show debug info if it wants. The list is
+  // mutated in place by `updatePowerups`; the physics loop is the only writer.
+  const powerups: Ref<Powerup[]> = ref([])
+  // Spawn cadence for the current match. `enabled` flips on per-game when the
+  // stage gate is satisfied (or the test scene forces it on); the interval
+  // bounds default to the production 10–15s window but can be overridden via
+  // `initGame` for the dev test scene at /power-up.
+  let powerupsEnabled = false
+  let powerupIntervalMinMs = POWERUP_DEFAULT_INTERVAL_MIN_MS
+  let powerupIntervalMaxMs = POWERUP_DEFAULT_INTERVAL_MAX_MS
+  // Countdown to next spawn (ms). Resets to a random value in
+  // [min..max] each time it reaches zero.
+  let powerupSpawnTimer = 0
+  let nextPowerupId = 0
+
+  const rollPowerupSpawnDelay = (): number => {
+    const span = Math.max(0, powerupIntervalMaxMs - powerupIntervalMinMs)
+    return powerupIntervalMinMs + Math.random() * span
+  }
 
   // ── Animation Frame ──────────────────────────────────────────────────────
   let physicsRafId: number | null = null
@@ -474,11 +524,26 @@ export const useBaybladeGame = () => {
   const statsFor = (blade: BaybladeState): BaybladeStats => {
     const stats = computeStats(blade.config, blade.config.topLevel ?? 0, blade.config.bottomLevel ?? 0)
     let dmg = stats.damageMultiplier
+    let def = stats.defenseMultiplier
+    let spd = stats.speedMultiplier
     if (firstGameBoost && blade.owner === 'player') dmg *= 2
     // Split-boss children hit for a fraction of the parent's damage so a
     // swarm can't simply out-DPS a focused target.
     if (blade.isSplitChild) dmg *= SPLIT_CHILD_DAMAGE_PCT
-    return dmg === stats.damageMultiplier ? stats : { ...stats, damageMultiplier: dmg }
+    // Powerup buffs collected during this match. Each pickup multiplies the
+    // matching axis (e.g. two attack pickups stack to 1.25 * 1.25).
+    const buffs = blade.buffs
+    if (buffs) {
+      if (buffs.attack) dmg *= buffs.attack
+      if (buffs.defense) def *= buffs.defense
+      if (buffs.speed) spd *= buffs.speed
+    }
+    if (
+      dmg === stats.damageMultiplier
+      && def === stats.defenseMultiplier
+      && spd === stats.speedMultiplier
+    ) return stats
+    return { ...stats, damageMultiplier: dmg, defenseMultiplier: def, speedMultiplier: spd }
   }
 
   // ─── Factory ─────────────────────────────────────────────────────────────
@@ -665,7 +730,9 @@ export const useBaybladeGame = () => {
     nTeam: BaybladeConfig[],
     boost = false,
     arena: ArenaType = 'default',
-    bouncerCount = 0
+    bouncerCount = 0,
+    enablePowerups = false,
+    powerupIntervalMs: [number, number] = [POWERUP_DEFAULT_INTERVAL_MIN_MS, POWERUP_DEFAULT_INTERVAL_MAX_MS]
   ) => {
     firstGameBoost = boost
     stopPhysics()
@@ -799,6 +866,14 @@ export const useBaybladeGame = () => {
     damageNumbers.length = 0
     activeSparks.length = 0
     gameOverAt = null
+
+    // ── Powerups ──────────────────────────────────────────────────────────
+    // Configure spawn cadence and clear any leftover crates/particles from
+    // a previous match. The actual spawning is driven by the physics loop.
+    powerupsEnabled = enablePowerups
+    powerupIntervalMinMs = powerupIntervalMs[0]
+    powerupIntervalMaxMs = powerupIntervalMs[1]
+    resetPowerups()
 
     // ── Bouncers: pinball-style obstacles on the arena floor ───────────────
     // Regenerate positions every match. We place them inside an annulus
@@ -1295,6 +1370,10 @@ export const useBaybladeGame = () => {
       }
     }
 
+    // Powerup spawn timer + lifecycle + collision (no-op when the stage
+    // gate or test scene hasn't enabled the system).
+    updatePowerups(16)
+
     // Update spark animations (remove finished ones)
     for (let i = activeSparks.length - 1; i >= 0; i--) {
       if (updateSpritesheetAnim(activeSparks[i]!, 16)) {
@@ -1484,11 +1563,23 @@ export const useBaybladeGame = () => {
     // no damage — until they settle. Their blinking renders elsewhere.
     if (isInvulnerable(a) || isInvulnerable(b)) return
 
+    // Split siblings collide with each other physically and deal a reduced
+    // 25% friendly-fire damage — they share a groupId but should still
+    // bounce + chip each other when they swarm. Detect that case here so
+    // the normal collision/damage path runs (with the multiplier applied
+    // further down) instead of the ally early-return below.
+    const friendlyFire = !!(
+      a.groupId !== undefined && a.groupId === b.groupId
+      && a.isSplitChild && b.isSplitChild
+    )
+    const FRIENDLY_FIRE_MUL = 0.25
+
     // Same-group (partner / healer / ghost-twin / split-sibling) contact —
     // no damage. Partner/healer allies still physically bounce + separate
-    // so they don't stack on top of each other, while ghost twins and
-    // split siblings keep phasing through one another.
-    if (a.groupId !== undefined && a.groupId === b.groupId) {
+    // so they don't stack on top of each other, while ghost twins keep
+    // phasing through one another. Split siblings are handled via the
+    // friendlyFire path above and skip this early-return entirely.
+    if (!friendlyFire && a.groupId !== undefined && a.groupId === b.groupId) {
       const now_ally = performance.now()
       const bounceAllies = !!(a.bouncesAllies && b.bouncesAllies)
       if (a.healsAllies || b.healsAllies) {
@@ -1720,6 +1811,7 @@ export const useBaybladeGame = () => {
         const dmg = (closingSpeed * aStats.damageMultiplier * atkMul * aStats.totalWeight)
           / (bStats.totalWeight * defMul)
           * DAMAGE_SCALE * bSpeedAdv * aComboMul
+          * (friendlyFire ? FRIENDLY_FIRE_MUL : 1)
         if (applyBladeDamage(b, dmg, cx, cy, a.owner, isCrit)) hadKill = true
       }
       // b attacks a
@@ -1741,6 +1833,7 @@ export const useBaybladeGame = () => {
         const dmg = (closingSpeed * bStats.damageMultiplier * atkMul * bStats.totalWeight)
           / (aStats.totalWeight * defMul)
           * DAMAGE_SCALE * aSpeedAdv * bComboMul
+          * (friendlyFire ? FRIENDLY_FIRE_MUL : 1)
         if (applyBladeDamage(a, dmg, cx, cy, b.owner, isCrit)) hadKill = true
       }
     }
@@ -1756,12 +1849,13 @@ export const useBaybladeGame = () => {
       const lastChip = spikyChipCooldowns.get(spikyKey) ?? 0
       if (nowChip - lastChip >= SPIKY_CHIP_COOLDOWN_MS) {
         let chipped = false
+        const chipDmg = SPIKY_FLAT_DAMAGE * (friendlyFire ? FRIENDLY_FIRE_MUL : 1)
         if (a.config.topPartId === 'triangle' && !aHitInBack && b.hp > 0) {
-          if (applyBladeDamage(b, SPIKY_FLAT_DAMAGE, cx, cy, a.owner, false)) hadKill = true
+          if (applyBladeDamage(b, chipDmg, cx, cy, a.owner, false)) hadKill = true
           chipped = true
         }
         if (b.config.topPartId === 'triangle' && !bHitInBack && a.hp > 0) {
-          if (applyBladeDamage(a, SPIKY_FLAT_DAMAGE, cx, cy, b.owner, false)) hadKill = true
+          if (applyBladeDamage(a, chipDmg, cx, cy, b.owner, false)) hadKill = true
           chipped = true
         }
         if (chipped) spikyChipCooldowns.set(spikyKey, nowChip)
@@ -1847,6 +1941,7 @@ export const useBaybladeGame = () => {
 
     renderArena(ctx)
     renderBouncers(ctx)
+    renderPowerups(ctx)
     renderMeteorShower(ctx)
     renderTrails(ctx)
 
@@ -2133,6 +2228,396 @@ export const useBaybladeGame = () => {
       ctx.beginPath()
       ctx.arc(b.x - b.radius * 0.35, b.y - b.radius * 0.35, b.radius * 0.22, 0, Math.PI * 2)
       ctx.fill()
+    }
+  }
+
+  // ─── Powerup lifecycle ───────────────────────────────────────────────────
+
+  /**
+   * Disintegrate puffs spawned when a powerup is collected or expires. Each
+   * particle is a tiny coloured square drifting outward and fading; the array
+   * is updated in place by `updatePowerups`.
+   */
+  interface PowerupParticle {
+    x: number
+    y: number
+    vx: number
+    vy: number
+    color: string
+    life: number
+    maxLife: number
+    size: number
+  }
+
+  const powerupParticles: PowerupParticle[] = []
+
+  // Match the stat-icon palette used in BaybladeConfigModal: red-400 attack,
+  // blue-400 defense, cyan-400 speed. Used for both the disintegrate puff
+  // particles and (via the lighter/darker derivations below) the 3d crate.
+  // Particle color (kept for the disintegrate puff) — uses the mid tone
+  // from the palette below so all of the powerup VFX share one identity.
+  const POWERUP_STAT_COLOR: Record<PowerupStat, string> = {
+    attack: '#ef4444',  // red-500
+    defense: '#3b82f6', // blue-500
+    speed: '#06b6d4'    // cyan-500
+  }
+  // Cohesive 3d-box palette per stat. Each entry packs the four shades
+  // the renderer needs: a bright top-edge ridge, a mid-tone wall body, a
+  // darker outline, and a semi-transparent front-face fill so the stat
+  // glyph reads as if it were embedded inside the colored crate.
+  interface PowerupPalette {
+    light: string
+    wall: string
+    outline: string
+    front: string
+  }
+
+  const POWERUP_PALETTE: Record<PowerupStat, PowerupPalette> = {
+    attack: {
+      light: '#fda4af',
+      wall: '#dc2626',
+      outline: '#7f1d1d',
+      front: 'rgba(248, 113, 113, 0.55)' // red-400 @ 55%
+    },
+    defense: {
+      light: '#93c5fd',
+      wall: '#2563eb',
+      outline: '#1e3a8a',
+      front: 'rgba(96, 165, 250, 0.55)' // blue-400 @ 55%
+    },
+    speed: {
+      light: '#67e8f9',
+      wall: '#0891b2',
+      outline: '#155e75',
+      front: 'rgba(34, 211, 238, 0.55)' // cyan-400 @ 55%
+    }
+  }
+
+  // SVG path data lifted verbatim from src/components/icons/Icon{Attack,
+  // Defense,Speed}.vue. The icons share a 24×24 viewBox, so the renderer
+  // translates by (-12, -12) before stroking/filling them and scales them to
+  // the requested glyph size.
+  const POWERUP_ICON_PATH: Record<PowerupStat, string> = {
+    attack: 'M21.5 2.5L8 13L5 10L3.5 11.5L6.5 14.5L4 17L7 20L9.5 17.5L12.5 20.5L14 19L11 16Z',
+    defense: 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z',
+    speed: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z'
+  }
+  // Lazily compiled Path2Ds — one per stat — keyed off the same record.
+  const powerupIconPath2D = new Map<PowerupStat, Path2D>()
+  const getPowerupIconPath = (stat: PowerupStat): Path2D => {
+    let p = powerupIconPath2D.get(stat)
+    if (!p) {
+      p = new Path2D(POWERUP_ICON_PATH[stat])
+      powerupIconPath2D.set(stat, p)
+    }
+    return p
+  }
+
+  /**
+   * Try to spawn a powerup at a free location inside the arena. Bails out
+   * silently if 12 placement attempts all collide with a blade or another
+   * powerup — the next physics tick will roll a new attempt anyway.
+   */
+  const spawnPowerup = (): void => {
+    const fullRadius = BLADE_RADIUS * POWERUP_RADIUS_FRACTION
+    const minSepBlade = BLADE_RADIUS + fullRadius + 6
+    const minSepPowerup = fullRadius * 2 + 8
+    const placementR = ARENA_RADIUS - fullRadius - 12
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const angle = Math.random() * Math.PI * 2
+      // Bias slightly toward the inner arena so spawned crates aren't
+      // pinned against the wall where blades have less room to redirect.
+      const r = placementR * (0.25 + Math.random() * 0.7)
+      const x = Math.cos(angle) * r
+      const y = Math.sin(angle) * r
+
+      let ok = true
+      for (const blade of allBlades.value) {
+        if (blade.hp <= 0) continue
+        if (Math.hypot(blade.x - x, blade.y - y) < minSepBlade) {
+          ok = false
+          break
+        }
+      }
+      if (ok) {
+        for (const p of powerups.value) {
+          if (Math.hypot(p.x - x, p.y - y) < minSepPowerup) {
+            ok = false
+            break
+          }
+        }
+      }
+      if (!ok) continue
+
+      const stat = POWERUP_STATS[Math.floor(Math.random() * POWERUP_STATS.length)]!
+      powerups.value.push({
+        id: nextPowerupId++,
+        x, y,
+        stat,
+        phase: 'growing',
+        age: 0,
+        lifetime: POWERUP_LIFETIME_MS,
+        scale: 0,
+        radius: fullRadius
+      })
+      return
+    }
+  }
+
+  /**
+   * Spawn a small disintegrate burst at the given location. Used by both the
+   * "picked up" and "expired" paths so they share a single visual recipe.
+   */
+  const spawnPowerupParticles = (x: number, y: number, stat: PowerupStat) => {
+    const color = POWERUP_STAT_COLOR[stat]
+    const COUNT = 10
+    for (let i = 0; i < COUNT; i++) {
+      const angle = (i / COUNT) * Math.PI * 2 + Math.random() * 0.4
+      const speed = 0.05 + Math.random() * 0.06
+      powerupParticles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 0.02,
+        color,
+        life: 380,
+        maxLife: 380,
+        size: 2 + Math.random() * 2
+      })
+    }
+  }
+
+  /**
+   * Apply a powerup's stat boost to the receiving blade. Buffs are stored
+   * multiplicatively so several pickups of the same kind stack.
+   */
+  const applyPowerupToBlade = (blade: BaybladeState, stat: PowerupStat) => {
+    if (!blade.buffs) blade.buffs = {}
+    blade.buffs[stat] = (blade.buffs[stat] ?? 1) * POWERUP_BUFF_MULTIPLIER
+  }
+
+  /**
+   * Per-physics-tick driver for the spawn timer, lifecycle animation, blade
+   * collision check, and disintegrate particles. Always called from
+   * `updatePhysics` so it inherits the deterministic 16ms step and the
+   * `simSpeed` multiplier (powerups appear faster in 2x mode, matching the
+   * rest of the simulation).
+   */
+  const updatePowerups = (dt: number): void => {
+    if (!powerupsEnabled) return
+
+    // Spawn cadence — only ticks during interactive gameplay phases so the
+    // timer freezes during the meteor intro / turn announcement / game over.
+    const ph = phase.value
+    const isLive =
+      ph === 'player_turn'
+      || ph === 'player_launched'
+      || ph === 'npc_turn'
+      || ph === 'npc_launched'
+    if (isLive) {
+      powerupSpawnTimer -= dt
+      if (powerupSpawnTimer <= 0) {
+        // Hard cap: never let more than 2 crates exist on the arena at once,
+        // including ones that are mid-vanish (still visually present).
+        if (powerups.value.length < 2) spawnPowerup()
+        powerupSpawnTimer = rollPowerupSpawnDelay()
+      }
+    }
+
+    // Lifecycle + collision
+    for (let i = powerups.value.length - 1; i >= 0; i--) {
+      const p = powerups.value[i]!
+      p.age += dt
+
+      // Phase machine. Each phase eases the scale toward its target so the
+      // crate visibly grows, overshoots, settles, and finally vanishes.
+      if (p.phase === 'growing') {
+        const t = Math.min(1, p.age / POWERUP_GROW_MS)
+        p.scale = POWERUP_OVERGROW_SCALE * t
+        if (t >= 1) p.phase = 'overgrow'
+      } else if (p.phase === 'overgrow') {
+        const t = Math.min(1, (p.age - POWERUP_GROW_MS) / POWERUP_OVERGROW_MS)
+        p.scale = POWERUP_OVERGROW_SCALE
+        if (t >= 1) p.phase = 'final'
+      } else if (p.phase === 'final') {
+        const t = Math.min(1, (p.age - POWERUP_GROW_MS - POWERUP_OVERGROW_MS) / POWERUP_SETTLE_MS)
+        p.scale = POWERUP_OVERGROW_SCALE + (POWERUP_FINAL_SCALE - POWERUP_OVERGROW_SCALE) * t
+        // Auto-expire after the lifetime so stale crates clear the floor.
+        if (p.age >= p.lifetime) {
+          p.phase = 'vanishing'
+          p.age = 0
+          spawnPowerupParticles(p.x, p.y, p.stat)
+        }
+      } else {
+        // 'vanishing' — shrink down then drop from the array.
+        const t = Math.min(1, p.age / POWERUP_VANISH_MS)
+        p.scale = POWERUP_FINAL_SCALE * (1 - t)
+        if (t >= 1) {
+          powerups.value.splice(i, 1)
+          continue
+        }
+      }
+
+      // Pickup detection — only "real" crates (not the vanishing remains)
+      // can be collected. Use the current scaled radius so half-grown crates
+      // can still be grabbed but with a smaller hitbox, matching the visual.
+      if (p.phase !== 'vanishing') {
+        const hitR = p.radius * Math.max(0.4, p.scale)
+        for (const blade of allBlades.value) {
+          if (blade.hp <= 0) continue
+          if (Math.hypot(blade.x - p.x, blade.y - p.y) <= blade.radius + hitR) {
+            applyPowerupToBlade(blade, p.stat)
+            try {
+              playSound('level-up')
+            } catch { /* sound is best-effort */
+            }
+            p.phase = 'vanishing'
+            p.age = 0
+            spawnPowerupParticles(p.x, p.y, p.stat)
+            break
+          }
+        }
+      }
+    }
+
+    // Particle update — drift outward, fade, drop dead entries.
+    for (let i = powerupParticles.length - 1; i >= 0; i--) {
+      const part = powerupParticles[i]!
+      part.x += part.vx * dt
+      part.y += part.vy * dt
+      part.vx *= 0.94
+      part.vy *= 0.94
+      part.life -= dt
+      if (part.life <= 0) powerupParticles.splice(i, 1)
+    }
+  }
+
+  /**
+   * Reset all powerup state for a fresh match. Called by `initGame` (which
+   * also wires the enabled flag and the spawn interval bounds).
+   */
+  const resetPowerups = (): void => {
+    powerups.value = []
+    powerupParticles.length = 0
+    powerupSpawnTimer = rollPowerupSpawnDelay()
+    nextPowerupId = 0
+  }
+
+  /**
+   * Draw a powerup as a small rounded 3d box with the stat icon glyph on
+   * the front face. Uses the same per-stat color as the team-composition
+   * modal (red-400 attack, blue-400 defense, cyan-400 speed) shaded into a
+   * lighter "top" face and a darker "side" face to sell the depth. The
+   * whole sprite is scaled by `p.scale` so the lifecycle animation reads as
+   * one continuous grow → settle → vanish.
+   */
+  const renderPowerup = (ctx: CanvasRenderingContext2D, p: Powerup): void => {
+    if (p.scale <= 0.001) return
+    const baseSize = p.radius * 1.6
+    const size = baseSize * p.scale
+    const half = size / 2
+    // Iso-ish offset for the top + side faces. Kept small so the sprite
+    // reads as a 3d crate without taking up much arena footprint.
+    const dx = size * 0.30
+    const dy = size * 0.20
+    // Rounded-corner radius. Kept proportional to the box size so it scales
+    // with the grow/vanish animation.
+    const r = Math.min(size * 0.22, half * 0.8)
+
+    const stat = p.stat
+    const palette = POWERUP_PALETTE[stat]
+
+    ctx.save()
+    ctx.translate(p.x, p.y)
+
+    // ── Extruded depth ────────────────────────────────────────────────
+    // Sweep N rounded-rect "slices" from the back layer toward the front
+    // so the depth wall inherits the rounded silhouette of the front face.
+    // The back-most slice uses the bright `light` shade to read as the
+    // top-edge ridge of an iso box; every interior slice uses `wall` so
+    // the visible depth reads as a single solid colored side.
+    ctx.strokeStyle = palette.outline
+    ctx.lineWidth = 1.2
+    const layers = 10
+    for (let i = layers; i >= 1; i--) {
+      const t = i / layers
+      ctx.fillStyle = i === layers ? palette.light : palette.wall
+      ctx.beginPath()
+      ctx.roundRect(-half + dx * t, -half - dy * t, size, size, r)
+      ctx.fill()
+    }
+    // Outline the back-most silhouette so the crate has a clean edge.
+    ctx.beginPath()
+    ctx.roundRect(-half + dx, -half - dy, size, size, r)
+    ctx.stroke()
+
+    // ── Front face (rounded square) ───────────────────────────────────
+    // Semi-transparent so the icon drawn on top reads as if it's sitting
+    // *inside* the colored box rather than pasted on its surface.
+    ctx.fillStyle = palette.front
+    ctx.beginPath()
+    ctx.roundRect(-half, -half, size, size, r)
+    ctx.fill()
+    ctx.stroke()
+
+    // ── Stat glyph ────────────────────────────────────────────────────
+    // Drawn from the same SVG path as the team-composition modal icon.
+    // White fill + thin dark outline so it pops against the colored crate.
+    drawPowerupGlyph(ctx, stat, size * 0.7)
+
+    // Idle pulse — soft white sheen on the front face once the crate has
+    // settled, clipped to the rounded silhouette so it stays inside the box.
+    if (p.phase === 'final') {
+      const pulse = 0.35 + 0.35 * Math.sin(performance.now() * 0.006)
+      ctx.save()
+      ctx.beginPath()
+      ctx.roundRect(-half, -half, size, size, r)
+      ctx.clip()
+      ctx.fillStyle = `rgba(255, 255, 255, ${pulse * 0.25})`
+      ctx.fillRect(-half, -half, size, half * 0.6)
+      ctx.restore()
+    }
+
+    ctx.restore()
+  }
+
+  /**
+   * Stamp the stat icon on the front face of a powerup crate. Uses the
+   * same Path2D-compiled SVG path as the team-composition modal, scaled
+   * from its native 24×24 viewBox down to `size` arena units.
+   */
+  const drawPowerupGlyph = (
+    ctx: CanvasRenderingContext2D,
+    stat: PowerupStat,
+    size: number
+  ) => {
+    const path = getPowerupIconPath(stat)
+    ctx.save()
+    // Center the 24×24 viewBox on (0,0) and scale to the requested glyph
+    // size. The icon already fills most of its viewBox, so we don't need
+    // additional padding.
+    const s = size / 24
+    ctx.scale(s, s)
+    ctx.translate(-12, -12)
+    ctx.fillStyle = '#ffffff'
+    ctx.fill(path)
+    ctx.lineWidth = 1.2
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)'
+    ctx.stroke(path)
+    ctx.restore()
+  }
+
+  const renderPowerups = (ctx: CanvasRenderingContext2D): void => {
+    if (powerups.value.length === 0 && powerupParticles.length === 0) return
+    for (const p of powerups.value) renderPowerup(ctx, p)
+
+    // Disintegrate particles — small fading squares.
+    for (const part of powerupParticles) {
+      const alpha = Math.max(0, part.life / part.maxLife)
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.fillStyle = part.color
+      ctx.fillRect(part.x - part.size / 2, part.y - part.size / 2, part.size, part.size)
+      ctx.restore()
     }
   }
 
@@ -2539,6 +3024,7 @@ export const useBaybladeGame = () => {
     meteorParticles,
     isBossStage,
     arenaType,
+    powerups,
 
     initGame,
     startMatch,

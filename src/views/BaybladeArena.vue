@@ -157,7 +157,7 @@ watch(stageReinitSignal, () => {
   showReward.value = false
   ghostMode.value = false
   ghostEnemy.value = null
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
 })
 
 // ─── Computed ──────────────────────────────────────────────────────────────
@@ -403,7 +403,7 @@ const onRewardContinue = async () => {
     }
   }
 
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
 }
 
 // ─── Leaderboard / Ghost Fight ────────────────────────────────────────────
@@ -430,7 +430,7 @@ const onOpenConfig = () => {
 
 const onConfigSave = (team: BaybladeConfig[]) => {
   saveTeam(team)
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
 }
 
 // ─── Lifecycle ─────────────────────────────────────────────────────────────
@@ -460,7 +460,7 @@ onMounted(() => {
   window.visualViewport?.addEventListener('resize', onViewportChange)
   window.visualViewport?.addEventListener('scroll', onViewportChange)
 
-  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0)
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
   renderRafId = requestAnimationFrame(renderLoop)
 
   recordPlayerStage(currentStageId.value)

@@ -14,7 +14,7 @@ const { userSoundVolume, userMusicVolume, setSettingValue } = useUser()
 const isMuted = computed(() => userMusicVolume.value === 0 && userSoundVolume.value === 0)
 
 // Store previous volumes to restore them when unmuting
-const prevMusicVol = ref(userMusicVolume.value || 0.5)
+const prevMusicVol = ref(userMusicVolume.value || 0.15)
 const prevSoundVol = ref(userSoundVolume.value || 0.7)
 
 /**

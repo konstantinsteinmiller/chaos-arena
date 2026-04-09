@@ -16,6 +16,7 @@ import {
   type BaybladeModelId
 } from '@/use/useModels'
 import type { TopPartId } from '@/types/bayblade'
+import useSounds from '@/use/useSound.ts'
 
 const {
   currentXp,
@@ -127,6 +128,8 @@ watch(isModalOpen, (open) => {
 // ─── Claim action ──────────────────────────────────────────────────────────
 
 const onClaim = (stage: number) => {
+  const { playSound } = useSounds()
+  playSound('happy')
   const res = claimStage(stage)
   if (res) refreshOfferedSkins()
 }

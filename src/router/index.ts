@@ -2,12 +2,14 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import MainMenu from '@/views/MainMenu'
 import BaybladeArena from '@/views/BaybladeArena'
 import CritTestScene from '@/views/CritTestScene.vue'
+import PowerupTestScene from '@/views/PowerupTestScene.vue'
 import useUser, { isWeb } from '@/use/useUser'
 
 const routes = [
   { path: '/', name: 'main-menu', component: MainMenu, redirect: 'battle' },
   { path: '/battle', name: 'battle', component: BaybladeArena },
-  { path: '/crit-test', name: 'crit-test', component: CritTestScene }
+  { path: '/crit-test', name: 'crit-test', component: CritTestScene },
+  { path: '/power-up', name: 'power-up', component: PowerupTestScene }
 ]
 
 const router = createRouter({

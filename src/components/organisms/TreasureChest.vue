@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import useBaybladeConfig from '@/use/useBaybladeConfig'
+import useSounds from '@/use/useSound.ts'
 
 interface Props {
   /** Element where the coin explosion VFX should fly to (e.g. the coin badge). */
@@ -63,6 +64,9 @@ const spawnCoinExplosion = () => {
   const angles: number[] = []
   const distances: number[] = []
   const staggerDelays: number[] = []
+
+  const { playSound } = useSounds()
+  playSound('happy')
 
   const container = document.getElementById('app') || document.body
 

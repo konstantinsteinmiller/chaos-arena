@@ -116,6 +116,40 @@ export interface BaybladeState {
   /** Timestamp (performance.now) until which the blade ignores collisions
    *  and renders as blinking — used by split-children while they settle. */
   invulnerableUntil?: number
+  /** Multiplicative powerup buffs collected during the current match. Each
+   *  pickup multiplies the corresponding entry (e.g. two attack pickups →
+   *  attack: 1.25 * 1.25). Persisted for the lifetime of a single game and
+   *  consumed by `statsFor()` when computing damage / defense / speed. */
+  buffs?: {
+    attack?: number
+    defense?: number
+    speed?: number
+  }
+}
+
+// ─── Arena Powerup ───────────────────────────────────────────────────────────
+
+/** Stat the powerup boosts on the first blade to touch it. */
+export type PowerupStat = 'attack' | 'defense' | 'speed'
+
+/** Lifecycle phases for the spawn → vanish animation. */
+export type PowerupPhase = 'growing' | 'overgrow' | 'final' | 'vanishing'
+
+export interface Powerup {
+  id: number
+  x: number
+  y: number
+  stat: PowerupStat
+  phase: PowerupPhase
+  /** Milliseconds elapsed since the powerup spawned (driven by the physics
+   *  loop, so it pauses when the loop pauses — "in-arena simulated time"). */
+  age: number
+  /** Total lifetime in ms before an un-collected powerup begins to vanish. */
+  lifetime: number
+  /** Current rendered scale, 0..~1.15 driven by the lifecycle phases. */
+  scale: number
+  /** Collision radius in arena units. Equals BLADE_RADIUS when at full size. */
+  radius: number
 }
 
 // ─── Meteor Shower Particle ──────────────────────────────────────────────────

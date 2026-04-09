@@ -14,6 +14,7 @@ import {
   type BaybladeModelId
 } from '@/use/useModels'
 import type { TopPartId } from '@/types/bayblade'
+import useSounds from '@/use/useSound.ts'
 
 const { addCoins } = useBaybladeConfig()
 const { t } = useI18n()
@@ -155,6 +156,9 @@ const collect = (dayIndex: number) => {
 
   // Coin reward is always granted, on every day (skin days are additive).
   addCoins(DAILY_REWARDS[dayIndex]!)
+
+  const { playSound } = useSounds()
+  playSound('happy')
 
   if (isSkinDay(dayIndex)) {
     // Re-resolve the pool at collect time to avoid handing out an already-owned
