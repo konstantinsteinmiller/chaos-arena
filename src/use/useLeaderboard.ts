@@ -2,6 +2,7 @@ import { ref, computed } from 'vue'
 import type { Ref } from 'vue'
 import type { TopPartId, BottomPartId, BaybladeConfig } from '@/types/bayblade'
 import useBaybladeCampaign from '@/use/useBaybladeCampaign'
+import { crazyPlayerName } from '@/use/useCrazyGames'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -466,7 +467,10 @@ const useLeaderboard = () => {
     const playerStage = Math.max(currentStageId.value, playerMaxStage.value)
     const playerEntry: LeaderboardEntry = {
       id: 'player',
-      name: 'You',
+      // Prefer the CrazyGames-side display name when we have one so the
+      // leaderboard shows the player's real handle instead of a generic
+      // placeholder. Falls back to "You" for anonymous / non-CG sessions.
+      name: crazyPlayerName.value || 'You',
       maxStage: playerStage,
       blade: { topPartId: 'star', bottomPartId: 'balanced' },
       dailyClimbed: 0,

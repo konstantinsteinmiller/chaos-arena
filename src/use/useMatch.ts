@@ -7,7 +7,7 @@ import useSound from '@/use/useSound.ts'
 const debugSaved = localStorage.getItem('debug') || 'false'
 const campaignTestSaved = localStorage.getItem('campaign-test') || 'false'
 export const isDebug = ref(!!JSON.parse(debugSaved))
-export const isCrazySDKIntegrated = true
+export const isCrazyGamesFullRelease = import.meta.env.VITE_APP_CRAZY_GAMES_FULL_RELEASE === 'true'
 export const isCampaignTest = ref(!!JSON.parse(campaignTestSaved))
 
 export const isSplashScreenVisible = ref<boolean>(false)

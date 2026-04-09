@@ -5,7 +5,7 @@
   <meta name="color-scheme" content="dark only">
   <link rel="icon" href="/favicon.ico">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+        content="default-src 'self' https://*.crazygames.com; script-src 'self' https://sdk.crazygames.com https://*.crazygames.com; style-src 'self' 'unsafe-inline' https://*.crazygames.com; img-src 'self' data: https://*.crazygames.com; connect-src 'self' https://*.crazygames.com; frame-src https://*.crazygames.com; media-src 'self' https://*.crazygames.com;"
   />
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -19,6 +19,8 @@
   <title>Chaos Arena</title>
 </head>
 <body>
+<!-- Load the SDK before your game code -->
+<script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
 <div id="app"></div>
 <script type="module" src="/src/main.ts"></script>
 </body>

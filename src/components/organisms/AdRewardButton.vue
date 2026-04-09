@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import IconCoin from '@/components/icons/IconCoin.vue'
-import { isCrazySDKIntegrated } from '@/use/useMatch.ts'
+import { isSdkActive, showRewardedAd } from '@/use/useCrazyGames'
 import useBaybladeConfig from '@/use/useBaybladeConfig'
+import { isCrazyGamesFullRelease } from '@/use/useMatch'
 
 interface Props {
   /** How many coins the player gets after watching the ad. */
@@ -14,14 +15,13 @@ const props = withDefaults(defineProps<Props>(), {
 
 const { addCoins } = useBaybladeConfig()
 
-// Triggers the rewarded video ad. Stub: integrate the ad SDK here.
-// On successful video completion, call `grantReward()` to credit the coins.
-const triggerAdReward = () => {
-  // TODO: integrate rewarded video ad SDK
-  //   On video completion → grantReward()
+// Triggers a rewarded video ad via the CrazyGames SDK. Coins are only
+// granted once the video played all the way through.
+const triggerAdReward = async () => {
+  const ok = await showRewardedAd()
+  if (ok) grantReward()
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const grantReward = () => {
   addCoins(props.coins)
 }
@@ -29,7 +29,7 @@ const grantReward = () => {
 
 <template lang="pug">
   button.adReward.group.cursor-pointer.z-10.transition-transform(
-    v-if="isCrazySDKIntegrated"
+    v-if="isSdkActive && isCrazyGamesFullRelease"
     class="hover:scale-[103%] active:scale-90 scale-80 sm:scale-110"
     @click="triggerAdReward"
   )

@@ -28,8 +28,9 @@ import FButtonSwitch from '@/components/atoms/FButtonSwitch.vue'
 import StageBadge from '@/components/StageBadge.vue'
 import FakeLeaderBoard from '@/components/organisms/FakeLeaderBoard.vue'
 import useLeaderboard, { type LeaderboardEntry } from '@/use/useLeaderboard'
-import { isCrazySDKIntegrated } from '@/use/useMatch.ts'
+import { isSdkActive, startGameplay, stopGameplay, showRewardedAd } from '@/use/useCrazyGames'
 import useBottomSafe from '@/use/useBottomSafe'
+import { isCrazyGamesFullRelease } from '@/use/useMatch.ts'
 
 // ─── Game & Config ─────────────────────────────────────────────────────────
 
@@ -222,14 +223,15 @@ const onSpeedSwitchClick = (value: 1 | 2) => {
   triggerSpeedBoostAd()
 }
 
-// Triggers the rewarded video ad. Stub: integrate the ad SDK here.
-// On successful video completion, call the snippet documented below to
-// unlock 2x for SPEED_BOOST_DURATION_MS:
-//   speedBoostExpiresAt.value = Date.now() + SPEED_BOOST_DURATION_MS
-//   localStorage.setItem(SPEED_BOOST_KEY, String(speedBoostExpiresAt.value))
-//   simSpeed.value = 2
-const triggerSpeedBoostAd = () => {
-  // TODO: integrate rewarded video ad SDK
+// Shows a rewarded video via the CrazyGames SDK. On successful completion
+// we unlock the 2x speed boost for SPEED_BOOST_DURATION_MS and flip the
+// sim to 2x immediately so the reward is felt right away.
+const triggerSpeedBoostAd = async () => {
+  const ok = await showRewardedAd()
+  if (!ok) return
+  speedBoostExpiresAt.value = Date.now() + SPEED_BOOST_DURATION_MS
+  localStorage.setItem(SPEED_BOOST_KEY, String(speedBoostExpiresAt.value))
+  simSpeed.value = 2
 }
 
 // Reference to the CoinBadge component — TreasureChest reads its `rootEl`
@@ -421,6 +423,10 @@ onMounted(() => {
 
   updateSpeedBoost()
   speedBoostIntervalId = window.setInterval(updateSpeedBoost, 1000)
+
+  // Tell CrazyGames the player is now in an interactive match. Paired with
+  // stopGameplay() in onUnmounted below.
+  startGameplay()
 })
 
 onUnmounted(() => {
@@ -433,6 +439,8 @@ onUnmounted(() => {
   if (speedBoostIntervalId !== null) clearInterval(speedBoostIntervalId)
   // Always leave the arena at normal speed so other views aren't affected
   simSpeed.value = 1
+
+  stopGameplay()
 })
 </script>
 
@@ -573,7 +581,7 @@ onUnmounted(() => {
       )
         //- Row 1: speed switch on its own so the full-width col isn't forced
         FButtonSwitch.speedup-switch.scale-90(
-          v-if="isCrazySDKIntegrated"
+          v-if="isSdkActive && isCrazyGamesFullRelease"
           class="sm:scale-100"
           :model-value="simSpeed"
           :options="[{ value: 1 }, { value: 2 }]"
