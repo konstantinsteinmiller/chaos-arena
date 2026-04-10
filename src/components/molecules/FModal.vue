@@ -86,7 +86,7 @@ const handleTabChange = (val: string | number) => {
             //- the absolutely-positioned X button; it must NOT also close
             //- the modal, otherwise the empty padded strip at the top of
             //- every modal's content becomes an invisible "close" hitbox.
-            div.p-3(v-if="isClosable")
+            div.close-button(v-if="isClosable")
               button(
                 v-if="isClosable"
                 @click="close"

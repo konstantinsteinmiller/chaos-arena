@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import type { Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import FIconButton from '@/components/atoms/FIconButton.vue'
+import FModal from '@/components/molecules/FModal.vue'
 import FReward from '@/components/atoms/FReward.vue'
 import SpinnerConfigModal from '@/components/organisms/SpinnerConfigModal.vue'
 import OptionsModal from '@/components/organisms/OptionsModal.vue'
@@ -15,6 +16,10 @@ import { useScreenshake } from '@/use/useScreenshake'
 import type { SpinnerConfig } from '@/types/spinner'
 import useUser, { isMobileLandscape, isMobilePortrait } from '@/use/useUser'
 import IconCoin from '@/components/icons/IconCoin.vue'
+import IconAttack from '@/components/icons/IconAttack.vue'
+import IconDefense from '@/components/icons/IconDefense.vue'
+import IconSpeed from '@/components/icons/IconSpeed.vue'
+import IconHp from '@/components/icons/IconHp.vue'
 import DailyRewards from '@/components/organisms/DailyRewards.vue'
 import BattlePass from '@/components/organisms/BattlePass.vue'
 import useBattlePass from '@/use/useBattlePass'
@@ -27,10 +32,16 @@ import FMuteButton from '@/components/atoms/FMuteButton.vue'
 import FButtonSwitch from '@/components/atoms/FButtonSwitch.vue'
 import StageBadge from '@/components/StageBadge.vue'
 import FakeLeaderBoard from '@/components/organisms/FakeLeaderBoard.vue'
+import SurrenderIcon from '@/components/organisms/SurrenderIcon.vue'
+import PvPButton from '@/components/organisms/PvPButton.vue'
+import PvPLobbyModal from '@/components/organisms/PvPLobbyModal.vue'
+import usePVP from '@/use/usePVP'
+import usePvpStats, { calcHonorPoints } from '@/use/usePvpStats'
 import useLeaderboard, { type LeaderboardEntry } from '@/use/useLeaderboard'
 import { isSdkActive, startGameplay, stopGameplay, showRewardedAd, showMidgameAd } from '@/use/useCrazyGames'
 import useBottomSafe from '@/use/useBottomSafe'
 import { isCrazyGamesFullRelease } from '@/use/useMatch.ts'
+import { spawnCoinExplosion } from '@/use/useCoinExplosion'
 
 // ─── Game & Config ─────────────────────────────────────────────────────────
 
@@ -47,10 +58,20 @@ const {
   updateDrag,
   releaseDrag,
   forceReleaseDragAtMax,
+  beginJoystickDrag,
+  updateJoystickDrag,
+  releaseJoystickDrag,
+  isJoystickVisible,
+  isJoystickDragging,
   stopPhysics,
   render,
   pixelToGame,
-  spawnMeteorShower
+  spawnMeteorShower,
+  pvpMode: gamePvpMode,
+  launchRemoteBlade,
+  setOnLocalLaunch,
+  setOnStateHash,
+  statsFor
 } = useSpinnerGame()
 
 const { playerTeam, hasFirstWin, saveTeam, addCoins, markFirstWin } = useSpinnerConfig()
@@ -64,7 +85,26 @@ const {
   cheatStage
 } = useSpinnerCampaign()
 const { recordPlayerStage, markGhostFought } = useLeaderboard()
-const { showHint, startHintTimer, clearHint } = useHint(5000)
+const {
+  canShowPvP,
+  status: pvpStatus,
+  role: pvpRole,
+  gameConfig: pvpGameConfig,
+  hostTeam: pvpHostTeam,
+  guestTeam: pvpGuestTeam,
+  registerCallbacks: pvpRegisterCallbacks,
+  sendLaunch: pvpSendLaunch,
+  sendSurrender: pvpSendSurrender,
+  sendStateCheck: pvpSendStateCheck,
+  joinLobby: pvpJoinLobby,
+  checkInviteFromUrl,
+  leavePvP
+} = usePVP()
+
+const pvpModalOpen: Ref<boolean> = ref(false)
+const pvpMode: Ref<boolean> = ref(false)
+
+const { showHint, startHintTimer, clearHint } = useHint(2500)
 const { shakeStyle } = useScreenshake()
 const { t } = useI18n()
 const { playSound } = useSounds()
@@ -85,6 +125,12 @@ const {
   awardLeaderboardWin: bpAwardLeaderboardWin,
   awardLoss: bpAwardLoss
 } = useBattlePass()
+
+const { recordPvpWin, recordPvpLoss } = usePvpStats()
+
+const PVP_COIN_REWARD = 20
+/** Honor points earned in the last PvP match — shown on the reward overlay. */
+const lastHonorEarned: Ref<number> = ref(0)
 
 // ─── Canvas Refs ───────────────────────────────────────────────────────────
 
@@ -156,6 +202,22 @@ watch(phase, (p) => {
   }
 })
 
+// PvP disconnect recovery — if opponent disconnects mid-match, stop the fight
+// and return to normal campaign state so the player isn't stuck.
+// Skip if already at game_over or showing rewards — the player needs to
+// click through the PvP reward screen first; tearing down here would flash
+// the campaign reward overlay instead.
+watch(pvpStatus, (s) => {
+  if ((s === 'disconnected' || s === 'error') && pvpMode.value) {
+    if (phase.value === 'game_over' || showReward.value) return
+    pvpMode.value = false
+    stopPhysics()
+    stopBattleMusic()
+    gamePvpMode.value = false
+    initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
+  }
+})
+
 // Cheat-stage reinit: when a cheat loads a custom boss stage (or clears one),
 // `stageReinitSignal` is bumped and we rebuild the match with whatever
 // `currentStage` now resolves to. Kept out of useCheats.ts so that composable
@@ -195,6 +257,80 @@ const rewardAmount = computed(() => {
 const showConfigButton = computed(() =>
   phase.value === 'game_over' || phase.value === 'idle' || phase.value === 'tap_to_start'
 )
+
+// Surrender is available during active battle phases (not pre-game or post-game)
+const isBattleActive = computed(() =>
+  ['deciding_turn', 'player_turn', 'player_launched', 'npc_turn', 'npc_launched'].includes(phase.value)
+)
+
+// Live stats for the blade HUD — always show all blades (even dead ones)
+// so the cards stay pinned to their corners.
+const bladeStats = computed(() =>
+  playerBlades.value.map(b => {
+    const s = statsFor(b)
+    return {
+      id: b.id,
+      hp: Math.max(0, Math.round(b.hp)),
+      maxHp: Math.round(s.maxHp),
+      atk: s.damageMultiplier,
+      def: s.defenseMultiplier,
+      spd: s.speedMultiplier,
+      dead: b.hp <= 0
+    }
+  })
+)
+
+const onSurrender = () => {
+  stopPhysics()
+  stopBattleMusic()
+  if (pvpMode.value) {
+    // Notify opponent, then force a loss game-over
+    pvpSendSurrender()
+    gameResult.value = 'lose'
+    phase.value = 'game_over'
+    return
+  }
+  // Re-init the same stage with no rewards — player stays on current stage
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
+}
+
+// Handle incoming surrender from opponent — force a win and show notification
+const showEnemySurrender = ref(false)
+
+const onRemoteSurrender = () => {
+  stopPhysics()
+  stopBattleMusic()
+  gameResult.value = 'win'
+  phase.value = 'game_over'
+  showEnemySurrender.value = true
+}
+
+// ─── PvP State-Check (desync detection) ──────────────────────────────────
+// Each client sends a hash of all blade positions + HP after every turn.
+// If both hashes for the same turn are available and don't match, we log
+// a warning so desync is easy to spot during testing.
+const localHashes = new Map<number, string>()
+const remoteHashes = new Map<number, string>()
+
+const checkDesync = (turn: number) => {
+  const local = localHashes.get(turn)
+  const remote = remoteHashes.get(turn)
+  if (!local || !remote) return
+  if (local !== remote) {
+    console.warn(`[PvP DESYNC] Turn ${turn}: local=${local} remote=${remote}`)
+  } else {
+    console.debug(`[PvP sync OK] Turn ${turn}: ${local}`)
+  }
+  // Prune old entries to avoid unbounded growth
+  localHashes.delete(turn)
+  remoteHashes.delete(turn)
+}
+
+// Called when the remote player's hash arrives
+const onRemoteStateCheck = (hash: string, turn: number) => {
+  remoteHashes.set(turn, hash)
+  checkDesync(turn)
+}
 
 const adRewardCoins = 100
 
@@ -246,6 +382,14 @@ const triggerSpeedBoostAd = async () => {
 // for the fly-to-badge VFX target.
 const coinBadgeRef = ref<{ rootEl: HTMLElement | null } | null>(null)
 const coinBadgeEl = computed(() => coinBadgeRef.value?.rootEl ?? null)
+const rewardCoinRef = ref<HTMLElement | null>(null)
+
+/** Fire coin explosion from any source element toward the HUD coin badge. */
+const fireCoinExplosion = (sourceEl: HTMLElement | null) => {
+  if (sourceEl && coinBadgeEl.value) {
+    spawnCoinExplosion({ sourceEl, targetEl: coinBadgeEl.value })
+  }
+}
 
 let speedBoostIntervalId: number | null = null
 
@@ -299,6 +443,8 @@ const onPointerDown = (e: PointerEvent) => {
     return
   }
   const coords = getGameCoords(e)
+  // Joystick takes priority when visible — check it first
+  if (isJoystickVisible.value && beginJoystickDrag(coords.x, coords.y)) return
   beginDrag(coords.x, coords.y)
 }
 
@@ -315,6 +461,10 @@ const isHoveringBlade = (gameX: number, gameY: number): boolean => {
 
 const onPointerMove = (e: PointerEvent) => {
   const coords = getGameCoords(e)
+  if (isJoystickDragging.value) {
+    updateJoystickDrag(coords.x, coords.y)
+    return
+  }
   if (isDragging.value) {
     updateDrag(coords.x, coords.y)
     canvasRef.value!.style.cursor = 'grabbing'
@@ -324,12 +474,20 @@ const onPointerMove = (e: PointerEvent) => {
 }
 
 const onPointerUp = () => {
+  if (isJoystickDragging.value) {
+    releaseJoystickDrag()
+    return
+  }
   if (!isDragging.value) return
   releaseDrag()
   if (canvasRef.value) canvasRef.value.style.cursor = ''
 }
 
 const onPointerLeave = () => {
+  if (isJoystickDragging.value) {
+    releaseJoystickDrag()
+    return
+  }
   if (!isDragging.value) return
   forceReleaseDragAtMax()
   if (canvasRef.value) canvasRef.value.style.cursor = ''
@@ -341,6 +499,33 @@ watch(isGameOver, (over) => {
   if (over && !coinsAwarded.value) {
     playSound(gameResult.value === 'win' ? 'win' : 'lose')
     if (gameResult.value === 'win') spawnMeteorShower(80, 50, 65)
+
+    // PvP matches — small coin reward + honor points tracking
+    if (pvpMode.value) {
+      try {
+        const myTeam = pvpRole.value === 'host' ? pvpHostTeam.value : pvpGuestTeam.value
+        const enemyTeam = pvpRole.value === 'host' ? pvpGuestTeam.value : pvpHostTeam.value
+        const sumLevels = (team: SpinnerConfig[]) =>
+          team.reduce((s, c) => s + (c.topLevel ?? 1) + (c.bottomLevel ?? 1), 0)
+        if (gameResult.value === 'win') {
+          const hp = calcHonorPoints(sumLevels(myTeam), sumLevels(enemyTeam))
+          recordPvpWin(hp)
+          lastHonorEarned.value = hp
+        } else {
+          recordPvpLoss()
+          lastHonorEarned.value = 0
+        }
+      } catch (e) {
+        console.warn('[PvP] Stats recording failed:', e)
+        lastHonorEarned.value = 0
+      }
+      addCoins(PVP_COIN_REWARD)
+      coinsAwarded.value = true
+      showReward.value = true
+      stopBattleMusic()
+      return
+    }
+
     addCoins(rewardAmount.value)
     if (gameResult.value === 'win' && !ghostMode.value) {
       if (!hasFirstWin.value) markFirstWin()
@@ -360,16 +545,19 @@ watch(isGameOver, (over) => {
   }
 })
 
+// Coin explosion VFX when the reward overlay appears
+watch(showReward, async (show) => {
+  if (!show) return
+  await nextTick()
+  fireCoinExplosion(rewardCoinRef.value)
+})
+
 // ─── Interstitial cadence ─────────────────────────────────────────────────
-// On the full CrazyGames release we play a midgame ad between matches:
-//   - every 2nd ghost (FakeLeaderboard) fight
-//   - every 3rd campaign match
-// Counters are persisted to localStorage so the cadence survives across
-// sessions. Because the CrazyGames SDK patches localStorage to mirror
-// writes into its own data module, persisting locally automatically
-// syncs the counters to the player's CG-side cloud save as well.
-const GHOST_GAME_COUNT_KEY = 'ca_ghost_game_count'
-const CAMPAIGN_GAME_COUNT_KEY = 'ca_campaign_game_count'
+// A single counter tracks battles since the last ad across all modes:
+//   - ghost / PvP battles trigger an ad after 2 battles without one
+//   - campaign battles trigger an ad after 3 battles without one
+// This avoids edge cases where mixing modes causes back-to-back ads.
+const AD_BATTLES_KEY = 'ca_battles_since_ad'
 
 const loadCount = (key: string): number => {
   try {
@@ -379,39 +567,49 @@ const loadCount = (key: string): number => {
   }
 }
 
-const ghostGameCount: Ref<number> = ref(loadCount(GHOST_GAME_COUNT_KEY))
-const campaignGameCount: Ref<number> = ref(loadCount(CAMPAIGN_GAME_COUNT_KEY))
+const battlesSinceAd: Ref<number> = ref(loadCount(AD_BATTLES_KEY))
+
+const resetAdCounter = () => {
+  battlesSinceAd.value = 0
+  localStorage.setItem(AD_BATTLES_KEY, '0')
+}
+
+const incrementAdCounter = () => {
+  battlesSinceAd.value += 1
+  localStorage.setItem(AD_BATTLES_KEY, String(battlesSinceAd.value))
+}
 
 const onRewardContinue = async () => {
   showReward.value = false
-  coinsAwarded.value = false
-  // Snapshot the mode before we tear down ghost state — the ad cadence
-  // and the counter increments need to know which kind of match just
-  // ended.
+
+  // Snapshot mode flags before tearing down state
+  const wasPvp = pvpMode.value
   const wasGhost = ghostMode.value
-  if (wasGhost) {
-    ghostGameCount.value += 1
-    localStorage.setItem(GHOST_GAME_COUNT_KEY, String(ghostGameCount.value))
+
+  // ghost/pvp → ad threshold 2, campaign → ad threshold 3
+  const adThreshold = (wasPvp || wasGhost) ? 2 : 3
+  incrementAdCounter()
+
+  // Show interstitial when the counter reaches the threshold
+  if (isCrazyGamesFullRelease && isSdkActive.value && battlesSinceAd.value >= adThreshold) {
+    resetAdCounter()
+    await showMidgameAd()
+  }
+
+  // Tear down mode state
+  if (wasPvp) {
+    pvpMode.value = false
+    gamePvpMode.value = false
+    leavePvP()
+  } else if (wasGhost) {
     ghostMode.value = false
     ghostEnemy.value = null
-  } else {
-    campaignGameCount.value += 1
-    localStorage.setItem(CAMPAIGN_GAME_COUNT_KEY, String(campaignGameCount.value))
   }
 
-  // Show an interstitial between matches when due. `showMidgameAd` is a
-  // no-op (and resolves immediately) when the SDK isn't active, but we
-  // still gate on the flags so the cadence logic doesn't run pointlessly
-  // outside the full release build.
-  if (isCrazyGamesFullRelease && isSdkActive.value) {
-    const adDue =
-      (wasGhost && ghostGameCount.value % 2 === 0) ||
-      (!wasGhost && campaignGameCount.value % 3 === 0)
-    if (adDue) {
-      await showMidgameAd()
-    }
-  }
-
+  // Reset the award guard RIGHT BEFORE initGame so the game-over watcher
+  // cannot re-fire while phase is still 'game_over' (which would cause a
+  // phantom second reward screen).
+  coinsAwarded.value = false
   initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
 }
 
@@ -474,6 +672,65 @@ onMounted(() => {
 
   recordPlayerStage(currentStageId.value)
 
+  // Check URL for incoming PvP invite — auto-join the lobby
+  const pendingPvpHost = checkInviteFromUrl()
+  if (pendingPvpHost) {
+    pvpModalOpen.value = true
+    pvpJoinLobby(pendingPvpHost)
+  }
+
+  // Register PvP game event callbacks
+  pvpRegisterCallbacks(
+    (firstTurn) => {
+      try {
+        pvpMode.value = true
+        const isMyTurn = (pvpRole.value === 'host' && firstTurn === 'host')
+          || (pvpRole.value === 'guest' && firstTurn === 'guest')
+        const myTeam = pvpRole.value === 'host' ? pvpHostTeam.value : pvpGuestTeam.value
+        const enemyTeam = pvpRole.value === 'host' ? pvpGuestTeam.value : pvpHostTeam.value
+        if (!myTeam.length || !enemyTeam.length) {
+          console.error('[PvP] Cannot start: empty team')
+          leavePvP()
+          pvpMode.value = false
+          return
+        }
+        pvpModalOpen.value = false
+        startBattleMusic()
+        initGame(myTeam, enemyTeam, false, pvpGameConfig.value.arenaType, 0, false, undefined, {
+          enabled: true,
+          myTurnFirst: isMyTurn
+        })
+      } catch (e) {
+        console.error('[PvP] Game start failed:', e)
+        leavePvP()
+        pvpMode.value = false
+        pvpModalOpen.value = false
+        initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
+      }
+    },
+    (bladeIndex, ax, ay) => {
+      try {
+        launchRemoteBlade(bladeIndex, ax, ay)
+      } catch (e) {
+        console.error('[PvP] Remote launch failed:', e)
+      }
+    },
+    onRemoteSurrender,
+    onRemoteStateCheck
+  )
+
+  // Wire local launch events → PvP network
+  setOnLocalLaunch((bladeIndex, ax, ay) => {
+    pvpSendLaunch(bladeIndex, ax, ay)
+  })
+
+  // Wire state-hash callback → PvP network + local desync detection
+  setOnStateHash((hash, turn) => {
+    localHashes.set(turn, hash)
+    pvpSendStateCheck(hash, turn)
+    checkDesync(turn)
+  })
+
   updateSpeedBoost()
   speedBoostIntervalId = window.setInterval(updateSpeedBoost, 1000)
 
@@ -494,6 +751,13 @@ onUnmounted(() => {
   simSpeed.value = 1
 
   stopGameplay()
+
+  setOnLocalLaunch(null)
+  // Clean up PvP if active
+  if (pvpMode.value || pvpStatus.value !== 'idle') {
+    leavePvP()
+    pvpMode.value = false
+  }
 })
 </script>
 
@@ -535,9 +799,9 @@ onUnmounted(() => {
           paddingRight: 'calc(0.5rem + env(safe-area-inset-right, 0px))'\
         }"
       )
-        //- Stage indicator (fancy themed badge) — hidden during a ghost fight
+        //- Stage indicator (fancy themed badge) — hidden during ghost fights and PvP
         StageBadge(
-          v-if="!ghostMode"
+          v-if="!ghostMode && !pvpMode"
           :stage-id="currentStageId"
           :name="currentStage.name"
           :is-boss="currentStage.isBoss"
@@ -545,11 +809,17 @@ onUnmounted(() => {
         )
         //- Spacer to keep coins right-aligned when StageBadge is hidden
         div(v-else)
-        //- Coin counter + Chest
-        div.flex.flex-col.items-end.gap-2
-          CoinBadge(ref="coinBadgeRef")
-          //- Treasure chest (cooldown + collect logic + VFX, fully self-contained)
-          TreasureChest(:target-el="coinBadgeEl")
+        //- Coin counter + Chest + Surrender
+        div.flex.items-start.gap-2
+          //- Surrender icon — visible only during active battle
+          SurrenderIcon(
+            v-if="isBattleActive"
+            @surrender="onSurrender"
+          )
+          div.flex.flex-col.items-end.gap-2
+            CoinBadge(ref="coinBadgeRef")
+            //- Treasure chest (cooldown + collect logic + VFX, fully self-contained) — hidden during PvP
+            TreasureChest(v-if="!pvpMode" :target-el="coinBadgeEl")
 
       //- Center overlay messages
       div.absolute.flex.items-center.justify-center(class="inset-0 z-[10]")
@@ -585,6 +855,17 @@ onUnmounted(() => {
             class="text-2xl sm:text-4xl"
           ) {{ turnAnnouncement }}
 
+        //- Opponent's turn label (PvP only — shown at top so player knows to wait)
+        div(
+          v-else-if="pvpMode && (phase === 'npc_turn' || phase === 'npc_launched')"
+          class="absolute text-center top-4 left-0 right-0"
+          :style="{ top: `calc(1rem + env(safe-area-inset-top, 0px))` }"
+        )
+          span.font-black.uppercase.tracking-wider.animate-pulse.game-text(
+            class="text-lg sm:text-2xl text-yellow-300"
+            style="text-shadow: 2px 2px 0 #000, -1px -1px 0 #000"
+          ) {{ t('pvp.opponentTurn') }}
+
         //- Player turn hint
         div(
           v-else-if="phase === 'player_turn'"
@@ -594,36 +875,66 @@ onUnmounted(() => {
           div.text-white.italic.game-text(class="text-xs sm:text-sm opacity-50")
             | {{ t('spinner.dragHint') }}
 
-      //- Bottom-left button row: Daily Rewards → Ad Reward → Battle Pass.
-      //- Wrapped in a single fixed flex container so mobile (scale-80)
-      //- and desktop (scale-110) both space cleanly without overlap.
-      //- Each child component is positionless; this row owns the anchoring.
+      //- Blade Stats HUD — bottom corners during active battle
+      div(
+        v-if="isBattleActive && bladeStats.length > 0"
+        class="absolute bottom-0 left-0 right-0 flex justify-between pointer-events-none z-[5]"
+        :style="{\
+          paddingBottom: `calc(0.375rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)`,\
+          paddingLeft: 'calc(0.375rem + env(safe-area-inset-left, 0px))',\
+          paddingRight: 'calc(0.375rem + env(safe-area-inset-right, 0px))'\
+        }"
+      )
+        div(
+          v-for="(bs, idx) in bladeStats"
+          :key="bs.id"
+          class="blade-stat-card"
+          :class="{ 'blade-stat-dead': bs.dead }"
+        )
+          div.blade-stat-label.game-text {{ t('spinner.spinnerLabel', { n: idx + 1 }) }}
+          div.blade-stat-grid
+            div.blade-stat-row
+              IconHp.blade-stat-icon.text-green-400
+              span.text-green-400 {{ bs.hp }}
+            div.blade-stat-row
+              IconAttack.blade-stat-icon.text-red-400
+              span.text-red-400 {{ bs.atk.toFixed(1) }}
+            div.blade-stat-row
+              IconDefense.blade-stat-icon.text-purple-400
+              span.text-purple-400 {{ bs.def.toFixed(1) }}
+            div.blade-stat-row
+              IconSpeed.blade-stat-icon.text-cyan-400
+              span.text-cyan-400 {{ bs.spd.toFixed(1) }}
+
+      //- Bottom-left column: mute → settings → daily/ad/battlepass row
       div(
         v-if="showConfigButton && !showReward"
-        class="fixed pointer-events-auto z-50 flex items-end gap-0 sm:gap-2"
+        class="fixed pointer-events-auto z-50 flex flex-col items-start gap-1"
         :style="{\
           bottom: `calc(0.5rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)`,\
           left: 'calc(0.5rem + env(safe-area-inset-left, 0px))'\
         }"
       )
-        DailyRewards(v-if="currentStageId >= 3")
-        AdRewardButton(
-          v-if="currentStageId >= 3"
-          :coins="adRewardCoins"
+        FMuteButton
+        FIconButton(
+          class="sm:mb-4"
+          type="secondary"
+          size="md"
+          :img-src="prependBaseUrl('images/icons/gears_128x128.webp')"
+          @click="showOptions = true"
         )
-        BattlePass(v-if="currentStageId >= 6")
-      FMuteButton(
-        v-if="showConfigButton"
-        class="fixed"
-        :style="{\
-          bottom: `calc(4.5rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)`,\
-          left: 'calc(0.5rem + env(safe-area-inset-left, 0px))'\
-        }"
-      )
+        div.flex.items-end(class="gap-0 sm:gap-2")
+          DailyRewards(v-if="currentStageId >= 3" @coins-awarded="fireCoinExplosion")
+          AdRewardButton(
+            v-if="currentStageId >= 3"
+            :coins="adRewardCoins"
+            @coins-awarded="fireCoinExplosion"
+          )
+          BattlePass(v-if="currentStageId >= 6" @coins-awarded="fireCoinExplosion")
 
       //- Bottom-right buttons — two stacked rows:
-      //-   row 1: 1x/2x speed switch (alone so it doesn't inflate col width)
-      //-   row 2: fake leaderboard → settings → team config
+      //-   row 1: 1x/2x speed switch
+      //-   row 2: pvp → leaderboard → team config
       div(
         v-if="showConfigButton && !showReward"
         class="fixed pointer-events-auto z-50 flex flex-col items-end gap-2"
@@ -632,7 +943,7 @@ onUnmounted(() => {
           right: 'calc(0.5rem + env(safe-area-inset-right, 0px))'\
         }"
       )
-        //- Row 1: speed switch on its own so the full-width col isn't forced
+        //- Row 1: speed switch
         FButtonSwitch.speedup-switch.scale-90(
           v-if="isSdkActive && isCrazyGamesFullRelease"
           class="sm:scale-100"
@@ -649,17 +960,15 @@ onUnmounted(() => {
               class="right-0 top-1/2 -translate-y-[50%] h-3 w-3 mr-1.5"
             )
 
-        //- Row 2: leaderboard → settings → team (team sits right of settings)
+        //- Row 2: pvp → leaderboard → team
         div.flex.items-end(class="gap-0 sm:gap-1")
+          PvPButton(
+            v-if="canShowPvP && !ghostMode && !pvpMode && currentStageId >= 2"
+            @click="pvpModalOpen = true"
+          )
           FakeLeaderBoard(
             v-if="currentStageId >= 5 && !ghostMode"
             @fight="onGhostFight"
-          )
-          FIconButton(
-            type="secondary"
-            size="md"
-            :img-src="prependBaseUrl('images/icons/gears_128x128.webp')"
-            @click="showOptions = true"
           )
           FIconButton(
             v-if="hasFirstWin || currentStageId >= 2"
@@ -676,15 +985,25 @@ onUnmounted(() => {
       @continue="onRewardContinue"
     )
       template(#ribbon)
-        span.text-white.font-black.uppercase.italic.game-text(class="sm:text-2xl" :class="{ 'sm:text-2xl': !isMobileLandscape && !isMobilePortrait }") {{ t('spinner.rewards') }}
+        span.text-white.font-black.uppercase.italic.game-text(class="sm:text-2xl" :class="{ 'sm:text-2xl': !isMobileLandscape && !isMobilePortrait }") {{ pvpMode ? t('pvp.title') : t('spinner.rewards') }}
       div.flex.flex-col.items-center.gap-4
         div.font-black.uppercase.tracking-wider.game-text(
           class="text-3xl sm:text-5xl"
           :class="gameResult === 'win' ? 'text-green-400' : 'text-red-400'"
         ) {{ resultText }}
-        div.flex.items-center.gap-3
-          IconCoin(class="w-8 h-8 text-yellow-300")
-          span.text-yellow-400.font-black.game-text(class="text-2xl sm:text-4xl") +{{ rewardAmount }}
+        //- PvP rewards: coins + honor points
+        template(v-if="pvpMode")
+          div.flex.items-center.gap-3(ref="rewardCoinRef")
+            IconCoin(class="w-8 h-8 text-yellow-300")
+            span.text-yellow-400.font-black.game-text(class="text-2xl sm:text-4xl") +{{ PVP_COIN_REWARD }}
+          div.honor-reward.flex.items-center.gap-2(v-if="lastHonorEarned > 0")
+            span.text-purple-300.font-black.game-text(class="text-xl sm:text-2xl") +{{ lastHonorEarned }}
+            span.text-purple-400.font-bold.game-text.uppercase(class="text-sm sm:text-lg") {{ t('pvp.honor') }}
+        //- Campaign / leaderboard rewards
+        template(v-else)
+          div.flex.items-center.gap-3(ref="rewardCoinRef")
+            IconCoin(class="w-8 h-8 text-yellow-300")
+            span.text-yellow-400.font-black.game-text(class="text-2xl sm:text-4xl") +{{ rewardAmount }}
 
     //- Options Modal
     OptionsModal(
@@ -698,6 +1017,26 @@ onUnmounted(() => {
       :initial-team="playerTeam"
       @save="onConfigSave"
     )
+
+    //- PvP Lobby Modal
+    PvPLobbyModal(
+      :is-open="pvpModalOpen"
+      @close="pvpModalOpen = false"
+    )
+
+    //- Enemy Surrender Notification
+    FModal(
+      :model-value="showEnemySurrender"
+      @update:model-value="showEnemySurrender = $event"
+      :is-closable="false"
+      :title="t('pvp.title')"
+    )
+      div.flex.flex-col.items-center.gap-4.py-4
+        div.text-white.font-black.uppercase.tracking-wider.game-text(class="text-xl sm:text-3xl") {{ t('pvp.enemySurrendered') }}
+        button.rounded-xl.font-black.uppercase.tracking-wider.game-text.cursor-pointer.transition-all(
+          class="px-8 py-3 text-lg sm:text-xl bg-gradient-to-b from-green-500 to-green-700 border-2 border-green-300 text-white hover:from-green-400 hover:to-green-600 active:scale-95"
+          @click="showEnemySurrender = false"
+        ) {{ t('pvp.okay') }}
 
 </template>
 
@@ -731,5 +1070,86 @@ onUnmounted(() => {
   100%
     transform: scale(2.6)
     opacity: 0
+
+// ── Honor Reward Shine ───────────────────────────────────────────────────
+.honor-reward
+  position: relative
+  overflow: hidden
+  padding: 0.25rem 0.75rem
+  border-radius: 8px
+  background: rgba(168, 85, 247, 0.12)
+
+  &::after
+    content: ''
+    position: absolute
+    top: 0
+    left: -100%
+    width: 60%
+    height: 100%
+    background: linear-gradient(105deg, transparent 30%, rgba(216, 180, 254, 0.35) 50%, transparent 70%)
+    animation: honor-shine 2.4s ease-in-out infinite
+
+@keyframes honor-shine
+  0%
+    left: -100%
+  60%
+    left: 160%
+  100%
+    left: 160%
+
+// ── Blade Stats HUD ──────────────────────────────────────────────────────
+.blade-stat-card
+  background: rgba(0, 0, 0, 0.55)
+  border: 1px solid rgba(255, 255, 255, 0.15)
+  border-radius: 6px
+  padding: 0.2rem 0.4rem
+  backdrop-filter: blur(4px)
+  transition: opacity 0.3s ease
+
+.blade-stat-dead
+  opacity: 0.35
+
+.blade-stat-label
+  font-size: 0.6rem
+  font-weight: 800
+  text-transform: uppercase
+  letter-spacing: 0.04em
+  color: rgba(255, 255, 255, 0.7)
+  text-align: center
+  line-height: 1
+  margin-bottom: 0.15rem
+  text-shadow: 1px 1px 0 #000
+
+.blade-stat-grid
+  display: grid
+  grid-template-columns: 1fr 1fr
+  gap: 0 0.35rem
+
+.blade-stat-row
+  display: flex
+  align-items: center
+  gap: 0.15rem
+  font-size: 0.65rem
+  font-weight: 700
+  line-height: 1.3
+
+.blade-stat-icon
+  width: 0.65rem
+  height: 0.65rem
+  flex-shrink: 0
+
+@media (min-width: 640px)
+  .blade-stat-card
+    padding: 0.25rem 0.5rem
+  .blade-stat-label
+    font-size: 0.7rem
+  .blade-stat-grid
+    gap: 0 0.4rem
+  .blade-stat-row
+    font-size: 0.75rem
+    gap: 0.2rem
+  .blade-stat-icon
+    width: 0.75rem
+    height: 0.75rem
 
 </style>

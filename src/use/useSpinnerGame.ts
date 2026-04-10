@@ -27,7 +27,10 @@ const { playSound } = useSounds()
 
 export const ARENA_RADIUS = 200
 const isDesktop = window.innerWidth > 600 && window.innerHeight > 600 && !isMobilePortrait.value && !isMobileLandscape.value
-export const BLADE_RADIUS = isDesktop ? 26 : 28
+const DEFAULT_BLADE_RADIUS = isDesktop ? 26 : 28
+// PvP uses a fixed radius so both clients agree regardless of viewport size.
+const PVP_BLADE_RADIUS = 27
+export let BLADE_RADIUS = DEFAULT_BLADE_RADIUS
 const BASE_MAX_FORCE = 14
 const STOP_THRESHOLD = 0.25
 // Global multiplier on every speed-based damage roll. Production value
@@ -36,7 +39,7 @@ const STOP_THRESHOLD = 0.25
 // damage to one roll per contact entry (Option C). Clean head-on slams
 // read very close to the old numbers; sliding/chase "grind" that used
 // to rack up damage now deals near-zero, which is the intended fix.
-const DAMAGE_SCALE = isDebug.value ? 10 : 1.4
+const DAMAGE_SCALE = isDebug.value ? 5 : 1.4
 const HIT_FLASH_FRAMES = 50
 const NPC_THINK_MS = 500
 const BOUNCE_DAMPENING = 0.75
@@ -239,6 +242,44 @@ export const useSpinnerGame = () => {
     playerBlades.value.find(b => b.id === selectedBladeId.value && b.hp > 0) ?? null
   )
 
+  // ── PvP Mode ──────────────────────────────────────────────────────────────
+  const pvpMode: Ref<boolean> = ref(false)
+  // Callback fired when the local player launches a blade — SpinnerArena
+  // wires this to send the launch over PeerJS.
+  // bladeIndex is the index within playerBlades (not the blade.id).
+  let onLocalLaunch: ((bladeIndex: number, ax: number, ay: number) => void) | null = null
+  // Buffer for a remote launch that arrived before the local client entered
+  // npc_turn (race condition over the network). Replayed as soon as
+  // npc_turn is reached.
+  let pendingRemoteLaunch: { bladeIndex: number; ax: number; ay: number } | null = null
+
+  // PvP state-check: turn counter and callback for sending state hashes
+  let pvpTurnCounter = 0
+  let onStateHash: ((hash: string, turn: number) => void) | null = null
+
+  /** Compute a lightweight hash of all gameplay-relevant blade state.
+   *  Both clients see the arena mirrored (player↔npc swapped, coordinates
+   *  negated). We normalize by using absolute positions and sorting, so
+   *  both sides produce the same hash for the same physical state. */
+  const computeStateHash = (): string => {
+    const entries: string[] = []
+    for (const b of [...playerBlades.value, ...npcBlades.value]) {
+      // Use absolute coords so mirrored views match
+      const ax = Math.abs(b.x)
+      const ay = Math.abs(b.y)
+      entries.push(
+        `${ax.toFixed(1)},${ay.toFixed(1)},${b.hp.toFixed(1)}`
+      )
+    }
+    entries.sort()
+    const str = entries.join('|')
+    let h = 5381
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) + h + str.charCodeAt(i)) | 0
+    }
+    return (h >>> 0).toString(36)
+  }
+
   // ── Drag State ───────────────────────────────────────────────────────────
   const isDragging: Ref<boolean> = ref(false)
   const dragStart: Ref<{ x: number; y: number }> = ref({ x: 0, y: 0 })
@@ -246,6 +287,22 @@ export const useSpinnerGame = () => {
   // Last valid drag direction (normalized) — used when pointer leaves viewport
   let lastDragNx = 0
   let lastDragNy = 0
+
+  // ── Wall-Proximity Boost ─────────────────────────────────────────────────
+  // When a blade sits near the arena wall, the player has less screen space
+  // to drag. We shorten the pull distance required for full force so a
+  // shorter physical swipe still reaches 100%.
+  const WALL_BOOST_START = 0.55  // start boosting when blade is >55% from center
+  const WALL_BOOST_MAX = 2.0   // at the very edge, pull distance halved (×2 multiplier)
+  /** Returns a >=1 multiplier on effective drag magnitude for the selected blade. */
+  const wallProximityMultiplier = (): number => {
+    const blade = selectedBlade.value
+    if (!blade) return 1
+    const dist = Math.sqrt(blade.x * blade.x + blade.y * blade.y)
+    const t = (dist / ARENA_RADIUS - WALL_BOOST_START) / (1 - WALL_BOOST_START)
+    if (t <= 0) return 1
+    return 1 + (WALL_BOOST_MAX - 1) * Math.min(t, 1)
+  }
 
   const dragVector = computed(() => ({
     dx: dragCurrent.value.x - dragStart.value.x,
@@ -258,7 +315,45 @@ export const useSpinnerGame = () => {
   })
 
   const dragForceRatio = computed(() =>
-    Math.min(dragMagnitude.value / MAX_PULL_DISTANCE, 1)
+    Math.min(dragMagnitude.value * wallProximityMultiplier() / MAX_PULL_DISTANCE, 1)
+  )
+
+  // ── Virtual Joystick ─────────────────────────────────────────────────────
+  // Shown as a helper when the selected blade is near any arena edge so the
+  // player can aim + launch without fighting the screen boundary.
+  const JOYSTICK_EDGE_THRESHOLD = 0.55 // blade dist from center / ARENA_RADIUS
+  const JOYSTICK_RADIUS = 32           // base circle radius in game-space
+  const JOYSTICK_KNOB_RADIUS = 10
+  const JOYSTICK_CANCEL_RADIUS = 8     // smaller cancel zone than blade drag
+  const JOYSTICK_MAX_PULL = 28         // max knob displacement = full force
+
+  const isJoystickVisible = computed(() => {
+    if (phase.value !== 'player_turn') return false
+    const blade = selectedBlade.value
+    if (!blade) return false
+    const dist = Math.sqrt(blade.x * blade.x + blade.y * blade.y)
+    return dist / ARENA_RADIUS >= JOYSTICK_EDGE_THRESHOLD
+  })
+
+  // Joystick center position (game-space) — placed below-left of the arena
+  // so it never overlaps the playing field. Recomputed per-frame in render
+  // but we store a stable ref so drag logic can use it.
+  const joystickCenter: Ref<{ x: number; y: number }> = ref({ x: 0, y: 0 })
+
+  const isJoystickDragging: Ref<boolean> = ref(false)
+  const joystickKnob: Ref<{ x: number; y: number }> = ref({ x: 0, y: 0 })
+
+  const joystickVector = computed(() => {
+    const dx = joystickKnob.value.x - joystickCenter.value.x
+    const dy = joystickKnob.value.y - joystickCenter.value.y
+    return { dx, dy }
+  })
+  const joystickMagnitude = computed(() => {
+    const { dx, dy } = joystickVector.value
+    return Math.sqrt(dx * dx + dy * dy)
+  })
+  const joystickForceRatio = computed(() =>
+    Math.min(joystickMagnitude.value / JOYSTICK_MAX_PULL, 1)
   )
 
   // ── NPC Timer ────────────────────────────────────────────────────────────
@@ -416,6 +511,97 @@ export const useSpinnerGame = () => {
 
   const DAMAGE_NUMBER_LIFE = 900
   const damageNumbers: DamageNumber[] = []
+
+  // ── Floating Powerup Pickup Indicators ──────────────────────────────────
+  // Similar to damage numbers but show "+ATK" / "+DEF" / "+SPD" with the
+  // stat icon color, floating upward from the pickup position.
+  interface PowerupFloat {
+    x: number
+    y: number
+    vy: number
+    stat: PowerupStat
+    life: number
+    maxLife: number
+  }
+
+  const POWERUP_FLOAT_LIFE = 1100
+  const powerupFloats: PowerupFloat[] = []
+  const POWERUP_STAT_LABEL: Record<PowerupStat, string> = {
+    attack: 'ATK',
+    defense: 'DEF',
+    speed: 'SPD'
+  }
+  const POWERUP_FLOAT_COLOR: Record<PowerupStat, string> = {
+    attack: '#ef4444',
+    defense: '#a78bfa',
+    speed: '#22d3ee'
+  }
+
+  const spawnPowerupFloat = (x: number, y: number, stat: PowerupStat) => {
+    powerupFloats.push({
+      x,
+      y,
+      vy: -0.06,
+      stat,
+      life: POWERUP_FLOAT_LIFE,
+      maxLife: POWERUP_FLOAT_LIFE
+    })
+  }
+
+  const updatePowerupFloats = (dt: number) => {
+    for (let i = powerupFloats.length - 1; i >= 0; i--) {
+      const pf = powerupFloats[i]!
+      pf.y += pf.vy * dt
+      pf.life -= dt
+      if (pf.life <= 0) powerupFloats.splice(i, 1)
+    }
+  }
+
+  const renderPowerupFloats = (ctx: CanvasRenderingContext2D) => {
+    for (const pf of powerupFloats) {
+      const alpha = Math.max(0, pf.life / pf.maxLife)
+      const scale = 0.9 + 0.3 * (1 - alpha)
+      const color = POWERUP_FLOAT_COLOR[pf.stat]
+      const label = '+' + POWERUP_STAT_LABEL[pf.stat]
+
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.font = `bold ${18 * scale}px Arial`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+
+      // Draw the stat icon to the left of the text
+      const textWidth = ctx.measureText(label).width
+      const iconSize = 14 * scale
+      const totalWidth = iconSize + 3 + textWidth
+      const startX = pf.x - totalWidth / 2
+
+      // Icon
+      const iconPath = getPowerupIconPath(pf.stat)
+      ctx.save()
+      ctx.translate(startX + iconSize / 2, pf.y)
+      const s = iconSize / 24
+      ctx.scale(s, s)
+      ctx.translate(-12, -12)
+      ctx.fillStyle = color
+      ctx.fill(iconPath)
+      ctx.lineWidth = 1.5
+      ctx.strokeStyle = '#000'
+      ctx.stroke(iconPath)
+      ctx.restore()
+
+      // Text with outline
+      const textX = startX + iconSize + 3 + textWidth / 2
+      ctx.strokeStyle = '#000000'
+      ctx.lineWidth = 3
+      ctx.lineJoin = 'round'
+      ctx.strokeText(label, textX, pf.y)
+      ctx.fillStyle = color
+      ctx.fillText(label, textX, pf.y)
+
+      ctx.restore()
+    }
+  }
 
   // Thunder arena combo tracking: per-blade last hit target + timestamp + stacks
   const COMBO_WINDOW_MS = 3000
@@ -735,8 +921,11 @@ export const useSpinnerGame = () => {
     arena: ArenaType = 'default',
     bouncerCount = 0,
     enablePowerups = false,
-    powerupIntervalMs: [number, number] = [POWERUP_DEFAULT_INTERVAL_MIN_MS, POWERUP_DEFAULT_INTERVAL_MAX_MS]
+    powerupIntervalMs: [number, number] = [POWERUP_DEFAULT_INTERVAL_MIN_MS, POWERUP_DEFAULT_INTERVAL_MAX_MS],
+    pvp: { enabled: boolean; myTurnFirst: boolean } | null = null
   ) => {
+    pvpMode.value = !!pvp?.enabled
+    BLADE_RADIUS = pvpMode.value ? PVP_BLADE_RADIUS : DEFAULT_BLADE_RADIUS
     firstGameBoost = boost
     stopPhysics()
     nextBladeId = 0
@@ -752,58 +941,72 @@ export const useSpinnerGame = () => {
       return createBladeState('player', spreadX, ARENA_RADIUS * 0.4, cfg)
     })
 
-    // NPC blades: deterministic grid in top half, with small jitter
-    // Collision distance is BLADE_RADIUS * 2; we enforce BLADE_RADIUS * 6 minimum spacing
-    const SAFE_DIST = BLADE_RADIUS * 6
+    // NPC blades positioning
     const nCount = nTeam.length
-    const maxJitter = BLADE_RADIUS * 0.8
     const npcPositions: { x: number; y: number }[] = []
 
-    if (nCount === 1) {
-      const jx = (Math.random() - 0.5) * maxJitter
-      const jy = (Math.random() - 0.5) * maxJitter
-      npcPositions.push({ x: jx, y: -ARENA_RADIUS * 0.4 + jy })
-    } else if (nCount === 2) {
-      for (let i = 0; i < 2; i++) {
-        const x = (i === 0 ? -1 : 1) * ARENA_RADIUS * 0.4 + (Math.random() - 0.5) * maxJitter
-        const y = -ARENA_RADIUS * 0.4 + (Math.random() - 0.5) * maxJitter
-        npcPositions.push({ x, y })
-      }
-    } else if (nCount === 3) {
-      // Triangle: 2 on top row, 1 centered below
-      const topY = -ARENA_RADIUS * 0.55
-      const botY = -ARENA_RADIUS * 0.2
-      const halfW = ARENA_RADIUS * 0.4
-      npcPositions.push({ x: -halfW + (Math.random() - 0.5) * maxJitter, y: topY + (Math.random() - 0.5) * maxJitter })
-      npcPositions.push({ x: halfW + (Math.random() - 0.5) * maxJitter, y: topY + (Math.random() - 0.5) * maxJitter })
-      npcPositions.push({ x: (Math.random() - 0.5) * maxJitter, y: botY + (Math.random() - 0.5) * maxJitter })
-    } else {
-      // 4: 2x2 grid
-      const halfW = ARENA_RADIUS * 0.4
-      const topY = -ARENA_RADIUS * 0.65
-      const botY = -ARENA_RADIUS * 0.15
-      const slots = [
-        { x: -halfW, y: topY },
-        { x: halfW, y: topY },
-        { x: -halfW, y: botY },
-        { x: halfW, y: botY }
-      ]
+    if (pvpMode.value) {
+      // PvP: use same X spread as the opponent's player layout but flip Y
+      // only, so left-right order (and skins) stay consistent across both
+      // screens. The acceleration mirror (executeRemoteLaunch) must match:
+      // only ay is negated, ax stays the same.
       for (let i = 0; i < nCount; i++) {
-        const s = slots[i]!
-        npcPositions.push({
-          x: s.x + (Math.random() - 0.5) * maxJitter,
-          y: s.y + (Math.random() - 0.5) * maxJitter
-        })
+        const spreadX = nCount === 1 ? 0 : (i / (nCount - 1) - 0.5) * ARENA_RADIUS * 0.7
+        npcPositions.push({ x: spreadX, y: -ARENA_RADIUS * 0.4 })
       }
-    }
+    } else {
+      // Campaign / ghost: deterministic grid in top half, with small jitter
+      const maxJitter = BLADE_RADIUS * 0.8
 
-    // Clamp all NPC positions inside the arena
-    for (const pos of npcPositions) {
-      const d = Math.hypot(pos.x, pos.y)
-      const maxR = ARENA_RADIUS - BLADE_RADIUS * 2
-      if (d > maxR) {
-        pos.x *= maxR / d
-        pos.y *= maxR / d
+      if (nCount === 1) {
+        const jx = (Math.random() - 0.5) * maxJitter
+        const jy = (Math.random() - 0.5) * maxJitter
+        npcPositions.push({ x: jx, y: -ARENA_RADIUS * 0.4 + jy })
+      } else if (nCount === 2) {
+        for (let i = 0; i < 2; i++) {
+          const x = (i === 0 ? -1 : 1) * ARENA_RADIUS * 0.4 + (Math.random() - 0.5) * maxJitter
+          const y = -ARENA_RADIUS * 0.4 + (Math.random() - 0.5) * maxJitter
+          npcPositions.push({ x, y })
+        }
+      } else if (nCount === 3) {
+        // Triangle: 2 on top row, 1 centered below
+        const topY = -ARENA_RADIUS * 0.55
+        const botY = -ARENA_RADIUS * 0.2
+        const halfW = ARENA_RADIUS * 0.4
+        npcPositions.push({
+          x: -halfW + (Math.random() - 0.5) * maxJitter,
+          y: topY + (Math.random() - 0.5) * maxJitter
+        })
+        npcPositions.push({ x: halfW + (Math.random() - 0.5) * maxJitter, y: topY + (Math.random() - 0.5) * maxJitter })
+        npcPositions.push({ x: (Math.random() - 0.5) * maxJitter, y: botY + (Math.random() - 0.5) * maxJitter })
+      } else {
+        // 4: 2x2 grid
+        const halfW = ARENA_RADIUS * 0.4
+        const topY = -ARENA_RADIUS * 0.65
+        const botY = -ARENA_RADIUS * 0.15
+        const slots = [
+          { x: -halfW, y: topY },
+          { x: halfW, y: topY },
+          { x: -halfW, y: botY },
+          { x: halfW, y: botY }
+        ]
+        for (let i = 0; i < nCount; i++) {
+          const s = slots[i]!
+          npcPositions.push({
+            x: s.x + (Math.random() - 0.5) * maxJitter,
+            y: s.y + (Math.random() - 0.5) * maxJitter
+          })
+        }
+      }
+
+      // Clamp all NPC positions inside the arena
+      for (const pos of npcPositions) {
+        const d = Math.hypot(pos.x, pos.y)
+        const maxR = ARENA_RADIUS - BLADE_RADIUS * 2
+        if (d > maxR) {
+          pos.x *= maxR / d
+          pos.y *= maxR / d
+        }
       }
     }
 
@@ -856,6 +1059,8 @@ export const useSpinnerGame = () => {
     npcActiveBladeId.value = null
     launchedBladeId.value = null
     npcThinkingElapsed = 0
+    pendingRemoteLaunch = null
+    pvpTurnCounter = 0
     gameResult.value = null
     turnAnnouncement.value = ''
     meteorParticles.value = []
@@ -935,6 +1140,24 @@ export const useSpinnerGame = () => {
     }
 
     clearCountdown()
+
+    // In PvP mode, skip tap_to_start and go straight into the match
+    if (pvp?.enabled) {
+      phase.value = 'deciding_turn'
+      const startsWithPlayer = pvp.myTurnFirst
+      turnAnnouncement.value = startsWithPlayer ? 'YOUR TURN' : 'OPPONENT\'S TURN'
+      startPhysics()
+      spawnMeteorShower(80, 50, 65)
+      setTimeout(() => {
+        phase.value = startsWithPlayer ? 'player_turn' : 'npc_turn'
+        turnAnnouncement.value = ''
+        npcThinkingElapsed = 0
+        const first = livingBlades(playerBlades.value)[0]
+        if (first) selectedBladeId.value = first.id
+      }, 1200)
+      return
+    }
+
     phase.value = 'tap_to_start'
   }
 
@@ -1084,8 +1307,9 @@ export const useSpinnerGame = () => {
 
     const stats = statsFor(blade)
 
-    // Compute target velocity (blade will accelerate toward this)
-    const ratio = Math.min(mag / MAX_PULL_DISTANCE, 1)
+    // Compute target velocity (blade will accelerate toward this).
+    // Wall-proximity boost: shorter pull achieves full force near edges.
+    const ratio = Math.min(mag * wallProximityMultiplier() / MAX_PULL_DISTANCE, 1)
     const maxForce = BASE_MAX_FORCE * stats.speedMultiplier
     const targetForce = ratio * maxForce
 
@@ -1104,6 +1328,7 @@ export const useSpinnerGame = () => {
     if (blade.ghostPending) spawnGhostTwin(blade)
     isDragging.value = false
     phase.value = 'player_launched'
+    if (pvpMode.value) onLocalLaunch?.(playerBlades.value.indexOf(blade), blade.ax, blade.ay)
   }
 
   /** Pointer left the viewport while dragging — launch at max force in last direction */
@@ -1131,6 +1356,111 @@ export const useSpinnerGame = () => {
     if (blade.ghostPending) spawnGhostTwin(blade)
     isDragging.value = false
     phase.value = 'player_launched'
+    if (pvpMode.value) onLocalLaunch?.(playerBlades.value.indexOf(blade), blade.ax, blade.ay)
+  }
+
+  // ── Virtual Joystick Interaction ─────────────────────────────────────────
+
+  const beginJoystickDrag = (gameX: number, gameY: number) => {
+    if (!isJoystickVisible.value || phase.value !== 'player_turn') return false
+    const jc = joystickCenter.value
+    const dx = gameX - jc.x
+    const dy = gameY - jc.y
+    if (Math.sqrt(dx * dx + dy * dy) > JOYSTICK_RADIUS + 4) return false
+    isJoystickDragging.value = true
+    joystickKnob.value = { x: gameX, y: gameY }
+    return true
+  }
+
+  const updateJoystickDrag = (gameX: number, gameY: number) => {
+    if (!isJoystickDragging.value) return
+    const jc = joystickCenter.value
+    const dx = gameX - jc.x
+    const dy = gameY - jc.y
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    // Clamp knob to joystick radius
+    if (dist <= JOYSTICK_RADIUS) {
+      joystickKnob.value = { x: gameX, y: gameY }
+    } else {
+      joystickKnob.value = {
+        x: jc.x + (dx / dist) * JOYSTICK_RADIUS,
+        y: jc.y + (dy / dist) * JOYSTICK_RADIUS
+      }
+    }
+  }
+
+  const releaseJoystickDrag = () => {
+    if (!isJoystickDragging.value || !selectedBlade.value) {
+      isJoystickDragging.value = false
+      return
+    }
+    const { dx, dy } = joystickVector.value
+    const mag = Math.sqrt(dx * dx + dy * dy)
+    // Cancel zone: knob returned near center
+    if (mag < JOYSTICK_CANCEL_RADIUS) {
+      isJoystickDragging.value = false
+      return
+    }
+
+    const blade = selectedBlade.value
+    const stats = statsFor(blade)
+    const ratio = Math.min(mag / JOYSTICK_MAX_PULL, 1)
+    const maxForce = BASE_MAX_FORCE * stats.speedMultiplier
+    const targetForce = ratio * maxForce
+
+    // Slingshot: launch opposite to pull direction (same as blade drag)
+    const nx = -dx / mag
+    const ny = -dy / mag
+
+    blade.vx = 0
+    blade.vy = 0
+    blade.ax = (nx * targetForce) / ACCEL_FRAMES
+    blade.ay = (ny * targetForce) / ACCEL_FRAMES
+    blade.accelFramesLeft = ACCEL_FRAMES
+    blade.wallBounceCount = 0
+
+    launchedBladeId.value = blade.id
+    if (blade.ghostPending) spawnGhostTwin(blade)
+    isJoystickDragging.value = false
+    phase.value = 'player_launched'
+    if (pvpMode.value) onLocalLaunch?.(playerBlades.value.indexOf(blade), blade.ax, blade.ay)
+  }
+
+  // ─── PvP Remote Launch ────────────────────────────────────────────────────
+
+  /** Execute a launch received from the remote PvP opponent.
+   *  The remote player's blades are in npcBlades on this client.
+   *  `bladeIndex` is the index within the remote player's team.
+   *  `ax`/`ay` are the per-frame acceleration values. */
+  const executeRemoteLaunch = (bladeIndex: number, ax: number, ay: number) => {
+    const blade = npcBlades.value[bladeIndex]
+    if (!blade || blade.hp <= 0) return
+
+    // Mirror the acceleration: the remote player's blades sit at the
+    // bottom on their screen but at the top on ours. Only the Y axis is
+    // flipped; X stays the same so left/right is consistent.
+    blade.vx = 0
+    blade.vy = 0
+    blade.ax = ax
+    blade.ay = -ay
+    blade.accelFramesLeft = ACCEL_FRAMES
+    blade.wallBounceCount = 0
+
+    npcActiveBladeId.value = blade.id
+    launchedBladeId.value = blade.id
+    if (blade.ghostPending) spawnGhostTwin(blade)
+    phase.value = 'npc_launched'
+  }
+
+  const launchRemoteBlade = (bladeIndex: number, ax: number, ay: number) => {
+    if (phase.value === 'npc_turn') {
+      executeRemoteLaunch(bladeIndex, ax, ay)
+    } else {
+      // Buffer the launch — it arrived before we transitioned to npc_turn
+      // (e.g. our blade is still rolling). It will be replayed as soon as
+      // npc_turn is entered.
+      pendingRemoteLaunch = { bladeIndex, ax, ay }
+    }
   }
 
   // ─── NPC AI ──────────────────────────────────────────────────────────────
@@ -1384,8 +1714,9 @@ export const useSpinnerGame = () => {
       }
     }
 
-    // Update floating damage numbers
+    // Update floating damage numbers + powerup pickup indicators
     updateDamageNumbers(16)
+    updatePowerupFloats(16)
 
     // Game over: all models of one side dead
     const playerAlive = livingBlades(playerBlades.value).length
@@ -1426,6 +1757,18 @@ export const useSpinnerGame = () => {
       npcThinkingElapsed = 0
       launchedBladeId.value = null
       comboState.clear()
+      // PvP state-check: send hash after our launch resolved
+      if (pvpMode.value) {
+        pvpTurnCounter++
+        const hash = computeStateHash()
+        onStateHash?.(hash, pvpTurnCounter)
+      }
+      // Replay buffered remote launch that arrived while our blade was still rolling
+      if (pvpMode.value && pendingRemoteLaunch) {
+        const p = pendingRemoteLaunch
+        pendingRemoteLaunch = null
+        executeRemoteLaunch(p.bladeIndex, p.ax, p.ay)
+      }
     }
 
     if (phase.value === 'npc_launched' && launchedStopped) {
@@ -1433,13 +1776,20 @@ export const useSpinnerGame = () => {
       launchedBladeId.value = null
       comboState.clear()
       npcActiveBladeId.value = null
+      // PvP state-check: send hash after opponent's launch resolved
+      if (pvpMode.value) {
+        pvpTurnCounter++
+        const hash = computeStateHash()
+        onStateHash?.(hash, pvpTurnCounter)
+      }
       // Auto-select first living player blade
       const first = livingBlades(playerBlades.value)[0]
       if (first) selectedBladeId.value = first.id
     }
 
-    // NPC thinking
-    if (phase.value === 'npc_turn') {
+    // NPC thinking — in PvP mode the remote player controls the NPC blades,
+    // so we skip the AI entirely and wait for launchRemoteBlade() calls.
+    if (phase.value === 'npc_turn' && !pvpMode.value) {
       npcThinkingElapsed += 16
       if (npcThinkingElapsed >= NPC_THINK_MS) {
         launchNpc()
@@ -1495,7 +1845,7 @@ export const useSpinnerGame = () => {
         isCrit: false
       })
     } else if (arenaType.value === 'forest') {
-      const healed = Math.min(1, blade.maxHp - blade.hp)
+      const healed = Math.round(Math.min(1, blade.maxHp - blade.hp))
       blade.hp = Math.min(blade.maxHp, blade.hp + 1)
       if (healed > 0) {
         const healAngle = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI / 3)
@@ -1507,6 +1857,11 @@ export const useSpinnerGame = () => {
           color: '#44cc66', isCrit: false
         })
       }
+    } else if (arenaType.value === 'shock') {
+      // Shock arena: remove 90% of blade speed on wall contact
+      blade.vx *= 0.1
+      blade.vy *= 0.1
+      blade.hitFlash = HIT_FLASH_FRAMES
     }
   }
 
@@ -1551,6 +1906,13 @@ export const useSpinnerGame = () => {
 
       bouncer.flash = 1
       triggerShake('small')
+
+      // Shock arena bouncers also drain 90% speed on impact
+      if (arenaType.value === 'shock') {
+        blade.vx *= 0.1
+        blade.vy *= 0.1
+        blade.hitFlash = HIT_FLASH_FRAMES
+      }
     }
   }
 
@@ -1911,13 +2273,37 @@ export const useSpinnerGame = () => {
 
   // ─── Physics Loop ────────────────────────────────────────────────────────
 
+  // Fixed-step accumulator: in PvP both clients must run exactly the same
+  // number of physics ticks regardless of display refresh rate.  We target
+  // 60 Hz (≈16.67 ms per tick). In non-PvP mode we keep the legacy
+  // "one tick per frame" behaviour so feel / difficulty stays unchanged.
+  const FIXED_STEP_MS = 1000 / 60
+  let physicsAccumulator = 0
+  let lastPhysicsTime = 0
+
   const startPhysics = () => {
-    const loop = () => {
-      // Run the physics step `simSpeed` times per rendered frame for a purely
-      // visual speed-up. The integration is deterministic at fixed step size,
-      // so collision impulses and damage are identical regardless of speed.
+    physicsAccumulator = 0
+    lastPhysicsTime = performance.now()
+
+    const loop = (now: number) => {
       const steps = simSpeed.value
-      for (let i = 0; i < steps; i++) updatePhysics()
+
+      if (pvpMode.value) {
+        // Fixed-step: accumulate real elapsed time and consume in fixed chunks
+        physicsAccumulator += now - lastPhysicsTime
+        lastPhysicsTime = now
+        // Cap to avoid spiral-of-death if tab was backgrounded
+        if (physicsAccumulator > FIXED_STEP_MS * 10) physicsAccumulator = FIXED_STEP_MS * 10
+        while (physicsAccumulator >= FIXED_STEP_MS) {
+          for (let i = 0; i < steps; i++) updatePhysics()
+          physicsAccumulator -= FIXED_STEP_MS
+        }
+      } else {
+        // Legacy: one tick per rendered frame (frame-rate-dependent but
+        // only affects single-player where it doesn't matter)
+        for (let i = 0; i < steps; i++) updatePhysics()
+      }
+
       if (physicsRafId !== null) {
         physicsRafId = requestAnimationFrame(loop)
       }
@@ -1972,6 +2358,7 @@ export const useSpinnerGame = () => {
 
     // Floating damage numbers
     renderDamageNumbers(ctx)
+    renderPowerupFloats(ctx)
 
     // Selection highlight
     if (phase.value === 'player_turn' && selectedBlade.value && !isDragging.value) {
@@ -1983,8 +2370,60 @@ export const useSpinnerGame = () => {
       renderDragIndicator(ctx, selectedBlade.value)
     }
 
+    // Joystick drag: show launch arrow on the blade so the player sees
+    // where it will go, same as the normal slingshot indicator.
+    if (isJoystickDragging.value && selectedBlade.value && phase.value === 'player_turn') {
+      const blade = selectedBlade.value
+      const { dx, dy } = joystickVector.value
+      const mag = Math.sqrt(dx * dx + dy * dy)
+      if (mag >= JOYSTICK_CANCEL_RADIUS) {
+        const ratio = joystickForceRatio.value
+        const nx = -dx / mag
+        const ny = -dy / mag
+        const arrowLen = 30 + 50 * ratio
+        const endX = blade.x + nx * arrowLen
+        const endY = blade.y + ny * arrowLen
+
+        const r = Math.floor(255 * ratio)
+        const g = Math.floor(255 * (1 - ratio * 0.6))
+
+        ctx.save()
+        ctx.strokeStyle = `rgb(${r}, ${g}, 0)`
+        ctx.fillStyle = `rgb(${r}, ${g}, 0)`
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        ctx.moveTo(blade.x, blade.y)
+        ctx.lineTo(endX, endY)
+        ctx.stroke()
+
+        const headSize = 8
+        const angle = Math.atan2(ny, nx)
+        const tipX = endX + nx * headSize
+        const tipY = endY + ny * headSize
+        ctx.beginPath()
+        ctx.moveTo(tipX, tipY)
+        ctx.lineTo(tipX - Math.cos(angle - 0.4) * headSize, tipY - Math.sin(angle - 0.4) * headSize)
+        ctx.lineTo(tipX - Math.cos(angle + 0.4) * headSize, tipY - Math.sin(angle + 0.4) * headSize)
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      }
+    }
+
     // Hint animation
     renderHintAnimation(ctx, showHintAnim)
+
+    // Virtual joystick (rendered inside the same transform)
+    if (isJoystickVisible.value && phase.value === 'player_turn') {
+      // Place joystick below-left of the arena, midway between the arena
+      // edge and the bottom of the visible game area.
+      const halfVisibleY = canvasHeight / (2 * scale)
+      const gapBelow = halfVisibleY - ARENA_RADIUS
+      const jcY = ARENA_RADIUS + Math.max(JOYSTICK_RADIUS + 6, gapBelow * 0.5)
+      const jcX = -ARENA_RADIUS * 0.5
+      joystickCenter.value = { x: jcX, y: jcY }
+      renderJoystick(ctx)
+    }
 
     ctx.restore()
   }
@@ -2087,6 +2526,12 @@ export const useSpinnerGame = () => {
       floorGrad: ['#1a1a08', '#12120a'],
       innerGlowRgba: 'rgba(255, 220, 60,',
       ringColor: '#2d2a1a', borderWidth: 4, shadowBlur: 25
+    },
+    shock: {
+      neonColor: '#ff66cc', neonRgba: 'rgba(255, 102, 204,',
+      floorGrad: ['#2a0a2a', '#150518'],
+      innerGlowRgba: 'rgba(200, 60, 180,',
+      ringColor: '#3a1a3a', borderWidth: 5, shadowBlur: 28
     }
   }
 
@@ -2177,6 +2622,36 @@ export const useSpinnerGame = () => {
       ctx.arc(0, 0, ARENA_RADIUS - 8, 0, Math.PI * 2)
       ctx.stroke()
     }
+
+    // Shock arena: pulsing electric band along the boundary
+    if (arenaType.value === 'shock') {
+      // Outer shock haze — beyond the border
+      const outerShock = ctx.createRadialGradient(0, 0, ARENA_RADIUS + 2, 0, 0, ARENA_RADIUS + 18)
+      outerShock.addColorStop(0, 'rgba(255, 100, 200, 0.25)')
+      outerShock.addColorStop(0.5, 'rgba(180, 50, 160, 0.1)')
+      outerShock.addColorStop(1, 'rgba(120, 30, 120, 0)')
+      ctx.fillStyle = outerShock
+      ctx.beginPath()
+      ctx.arc(0, 0, ARENA_RADIUS + 18, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Inner shock band — darker violet rim inside the border
+      const innerShock = ctx.createRadialGradient(0, 0, ARENA_RADIUS * 0.82, 0, 0, ARENA_RADIUS - 2)
+      innerShock.addColorStop(0, 'rgba(120, 30, 120, 0)')
+      innerShock.addColorStop(0.6, 'rgba(180, 50, 160, 0.08)')
+      innerShock.addColorStop(1, 'rgba(255, 100, 200, 0.18)')
+      ctx.fillStyle = innerShock
+      ctx.beginPath()
+      ctx.arc(0, 0, ARENA_RADIUS - 2, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Secondary inner border ring
+      ctx.strokeStyle = 'rgba(255, 120, 220, 0.3)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(0, 0, ARENA_RADIUS - 8, 0, Math.PI * 2)
+      ctx.stroke()
+    }
   }
 
   /**
@@ -2193,17 +2668,21 @@ export const useSpinnerGame = () => {
       const rimAlpha = Math.min(1, 0.55 + hit * 0.45)
       const glowR = b.radius * (1.8 + hit * 0.8)
 
+      const isShock = arenaType.value === 'shock'
+
       // Outer glow
       const glow = ctx.createRadialGradient(b.x, b.y, b.radius * 0.8, b.x, b.y, glowR)
-      glow.addColorStop(0, `rgba(120, 220, 255, ${0.35 + hit * 0.4})`)
-      glow.addColorStop(1, 'rgba(120, 220, 255, 0)')
+      glow.addColorStop(0, isShock
+        ? `rgba(220, 80, 200, ${0.35 + hit * 0.4})`
+        : `rgba(120, 220, 255, ${0.35 + hit * 0.4})`)
+      glow.addColorStop(1, isShock ? 'rgba(220, 80, 200, 0)' : 'rgba(120, 220, 255, 0)')
       ctx.fillStyle = glow
       ctx.beginPath()
       ctx.arc(b.x, b.y, glowR, 0, Math.PI * 2)
       ctx.fill()
 
       // Drop-shadow base
-      ctx.fillStyle = '#0f1a30'
+      ctx.fillStyle = isShock ? '#1a0a1a' : '#0f1a30'
       ctx.beginPath()
       ctx.arc(b.x, b.y + 1.2, b.radius, 0, Math.PI * 2)
       ctx.fill()
@@ -2213,18 +2692,26 @@ export const useSpinnerGame = () => {
         b.x - b.radius * 0.3, b.y - b.radius * 0.3, b.radius * 0.1,
         b.x, b.y, b.radius
       )
-      body.addColorStop(0, hit > 0.01 ? '#ffffff' : '#b8e8ff')
-      body.addColorStop(0.55, '#5bb8e8')
-      body.addColorStop(1, '#1a4d7a')
+      if (isShock) {
+        body.addColorStop(0, hit > 0.01 ? '#ffffff' : '#ffaaee')
+        body.addColorStop(0.55, '#cc44aa')
+        body.addColorStop(1, '#5a1a4a')
+      } else {
+        body.addColorStop(0, hit > 0.01 ? '#ffffff' : '#b8e8ff')
+        body.addColorStop(0.55, '#5bb8e8')
+        body.addColorStop(1, '#1a4d7a')
+      }
       ctx.fillStyle = body
       ctx.beginPath()
       ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2)
       ctx.fill()
 
       // Rim
-      ctx.strokeStyle = `rgba(180, 240, 255, ${rimAlpha * idlePulse})`
+      ctx.strokeStyle = isShock
+        ? `rgba(255, 140, 220, ${rimAlpha * idlePulse})`
+        : `rgba(180, 240, 255, ${rimAlpha * idlePulse})`
       ctx.lineWidth = 1.5
-      ctx.shadowColor = '#8fdfff'
+      ctx.shadowColor = isShock ? '#ff66cc' : '#8fdfff'
       ctx.shadowBlur = 6 + hit * 10
       ctx.beginPath()
       ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2)
@@ -2474,6 +2961,7 @@ export const useSpinnerGame = () => {
           if (blade.hp <= 0) continue
           if (Math.hypot(blade.x - p.x, blade.y - p.y) <= blade.radius + hitR) {
             applyPowerupToBlade(blade, p.stat)
+            spawnPowerupFloat(p.x, p.y - blade.radius, p.stat)
             try {
               playSound('level-up')
             } catch { /* sound is best-effort */
@@ -2506,6 +2994,7 @@ export const useSpinnerGame = () => {
   const resetPowerups = (): void => {
     powerups.value = []
     powerupParticles.length = 0
+    powerupFloats.length = 0
     powerupSpawnTimer = rollPowerupSpawnDelay()
     nextPowerupId = 0
   }
@@ -2684,19 +3173,27 @@ export const useSpinnerGame = () => {
     const pulse = isPlayer
       ? 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(performance.now() * 0.004))
       : 0.5
-    const auraRadius = blade.radius * 1.8
+    const auraRadius = blade.radius * 1.8 + 4
     const grad = ctx.createRadialGradient(
       blade.x, blade.y, blade.radius * 0.3,
       blade.x, blade.y, auraRadius
     )
+
+    // Adjust aura brightness per arena so ownership stays readable on
+    // floors whose hue overlaps the aura colour.
+    const at = arenaType.value
     if (isPlayer) {
-      grad.addColorStop(0, `rgba(60, 140, 255, ${0.5 * pulse})`)
-      grad.addColorStop(0.5, `rgba(40, 100, 220, ${0.25 * pulse})`)
-      grad.addColorStop(1, 'rgba(30, 80, 200, 0)')
+      // Blue aura — brighten on blue-tinted floors (ice, default)
+      const bright = (at === 'ice' || at === 'default') ? 1 : 0
+      grad.addColorStop(0, `rgba(${80 + bright * 40}, ${170 + bright * 40}, 255, ${0.55 * pulse})`)
+      grad.addColorStop(0.5, `rgba(${50 + bright * 30}, ${120 + bright * 30}, 240, ${0.3 * pulse})`)
+      grad.addColorStop(1, `rgba(${40 + bright * 20}, ${100 + bright * 20}, 220, 0)`)
     } else {
-      grad.addColorStop(0, `rgba(255, 60, 60, ${0.7 * pulse})`)
-      grad.addColorStop(0.5, `rgba(220, 40, 40, ${0.4 * pulse})`)
-      grad.addColorStop(1, 'rgba(200, 30, 30, 0)')
+      // Red aura — brighten on red/warm-tinted floors (boss, lava, shock)
+      const bright = (at === 'boss' || at === 'lava' || at === 'shock') ? 1 : 0
+      grad.addColorStop(0, `rgba(255, ${80 + bright * 50}, ${80 + bright * 50}, ${0.75 * pulse})`)
+      grad.addColorStop(0.5, `rgba(240, ${55 + bright * 40}, ${55 + bright * 40}, ${0.45 * pulse})`)
+      grad.addColorStop(1, `rgba(220, ${40 + bright * 30}, ${40 + bright * 30}, 0)`)
     }
     ctx.fillStyle = grad
     ctx.beginPath()
@@ -2907,6 +3404,110 @@ export const useSpinnerGame = () => {
     ctx.restore()
   }
 
+  // ─── Virtual Joystick Rendering ──────────────────────────────────────────
+
+  const renderJoystick = (ctx: CanvasRenderingContext2D) => {
+    const jc = joystickCenter.value
+    const dragging = isJoystickDragging.value
+
+    ctx.save()
+
+    // Base circle (dark translucent disc)
+    const baseGrad = ctx.createRadialGradient(jc.x, jc.y, 0, jc.x, jc.y, JOYSTICK_RADIUS)
+    baseGrad.addColorStop(0, 'rgba(30, 40, 60, 0.5)')
+    baseGrad.addColorStop(1, 'rgba(20, 25, 40, 0.35)')
+    ctx.fillStyle = baseGrad
+    ctx.beginPath()
+    ctx.arc(jc.x, jc.y, JOYSTICK_RADIUS, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Base ring
+    ctx.strokeStyle = 'rgba(100, 160, 255, 0.35)'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.arc(jc.x, jc.y, JOYSTICK_RADIUS, 0, Math.PI * 2)
+    ctx.stroke()
+
+    // Cancel zone indicator (dashed inner circle)
+    ctx.strokeStyle = dragging ? 'rgba(255, 80, 80, 0.4)' : 'rgba(255, 80, 80, 0.15)'
+    ctx.lineWidth = 1
+    ctx.setLineDash([2, 2])
+    ctx.beginPath()
+    ctx.arc(jc.x, jc.y, JOYSTICK_CANCEL_RADIUS, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    // Knob position
+    const kx = dragging ? joystickKnob.value.x : jc.x
+    const ky = dragging ? joystickKnob.value.y : jc.y
+
+    // Slingshot visual: dashed pull line to knob + launch arrow opposite
+    if (dragging) {
+      const { dx, dy } = joystickVector.value
+      const mag = Math.sqrt(dx * dx + dy * dy)
+      if (mag >= JOYSTICK_CANCEL_RADIUS) {
+        const ratio = joystickForceRatio.value
+        const r = Math.floor(255 * ratio)
+        const g = Math.floor(255 * (1 - ratio * 0.6))
+
+        // Pull line (dashed) — center to knob
+        ctx.strokeStyle = 'rgba(255,170,0,0.5)'
+        ctx.lineWidth = 1.5
+        ctx.setLineDash([4, 3])
+        ctx.beginPath()
+        ctx.moveTo(jc.x, jc.y)
+        ctx.lineTo(kx, ky)
+        ctx.stroke()
+        ctx.setLineDash([])
+
+        // Launch arrow (opposite of pull direction)
+        const nx = -dx / mag
+        const ny = -dy / mag
+        const arrowLen = 12 + 20 * ratio
+        const endX = jc.x + nx * arrowLen
+        const endY = jc.y + ny * arrowLen
+
+        ctx.strokeStyle = `rgb(${r}, ${g}, 0)`
+        ctx.fillStyle = `rgb(${r}, ${g}, 0)`
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(jc.x, jc.y)
+        ctx.lineTo(endX, endY)
+        ctx.stroke()
+
+        // Arrowhead
+        const headSize = 5
+        const angle = Math.atan2(ny, nx)
+        const tipX = endX + nx * headSize
+        const tipY = endY + ny * headSize
+        ctx.beginPath()
+        ctx.moveTo(tipX, tipY)
+        ctx.lineTo(tipX - Math.cos(angle - 0.4) * headSize, tipY - Math.sin(angle - 0.4) * headSize)
+        ctx.lineTo(tipX - Math.cos(angle + 0.4) * headSize, tipY - Math.sin(angle + 0.4) * headSize)
+        ctx.closePath()
+        ctx.fill()
+      }
+    }
+
+    // Knob
+    const knobGrad = ctx.createRadialGradient(kx, ky, 0, kx, ky, JOYSTICK_KNOB_RADIUS)
+    knobGrad.addColorStop(0, dragging ? 'rgba(140, 200, 255, 0.9)' : 'rgba(100, 160, 255, 0.7)')
+    knobGrad.addColorStop(1, dragging ? 'rgba(80, 140, 220, 0.5)' : 'rgba(60, 100, 180, 0.35)')
+    ctx.fillStyle = knobGrad
+    ctx.beginPath()
+    ctx.arc(kx, ky, JOYSTICK_KNOB_RADIUS, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Knob rim
+    ctx.strokeStyle = dragging ? 'rgba(160, 210, 255, 0.7)' : 'rgba(100, 160, 255, 0.4)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.arc(kx, ky, JOYSTICK_KNOB_RADIUS, 0, Math.PI * 2)
+    ctx.stroke()
+
+    ctx.restore()
+  }
+
   // ─── Coordinate Conversion ───────────────────────────────────────────────
 
   const pixelToGame = (
@@ -3040,13 +3641,29 @@ export const useSpinnerGame = () => {
     updateDrag,
     releaseDrag,
     forceReleaseDragAtMax,
+    beginJoystickDrag,
+    updateJoystickDrag,
+    releaseJoystickDrag,
+    isJoystickVisible,
+    isJoystickDragging,
     startPhysics,
     stopPhysics,
     spawnMeteorShower,
 
+    // PvP
+    pvpMode,
+    launchRemoteBlade,
+    setOnLocalLaunch: (cb: ((bladeIndex: number, ax: number, ay: number) => void) | null) => {
+      onLocalLaunch = cb
+    },
+    setOnStateHash: (cb: ((hash: string, turn: number) => void) | null) => {
+      onStateHash = cb
+    },
+
     render,
     pixelToGame,
-    speed
+    speed,
+    statsFor
   }
 }
 

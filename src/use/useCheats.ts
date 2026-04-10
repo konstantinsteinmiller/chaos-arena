@@ -128,6 +128,7 @@ const useCheats = () => {
     'ctrl+shift+alt+d': () => setArenaType('default'),
     'ctrl+shift+alt+b': () => setArenaType('boss'),
     'ctrl+shift+alt+h': () => setArenaType('thunder'),
+    'ctrl+shift+alt+s': () => setArenaType('shock'),
     // Boss-ability test stages (scaled to player upgrades for a fair fight)
     'ctrl+shift+alt+q': () => spawnCheatBoss('ghost'),
     'ctrl+shift+alt+w': () => spawnCheatBoss('split'),

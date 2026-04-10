@@ -14,9 +14,9 @@ export interface StageBladeConfig {
   bossAbility?: BossAbility
 }
 
-export type ArenaType = 'default' | 'boss' | 'lava' | 'ice' | 'forest' | 'thunder'
+export type ArenaType = 'default' | 'boss' | 'lava' | 'ice' | 'forest' | 'thunder' | 'shock'
 
-export const ARENA_TYPES: ArenaType[] = ['default', 'boss', 'lava', 'ice', 'forest', 'thunder']
+export const ARENA_TYPES: ArenaType[] = ['default', 'boss', 'lava', 'ice', 'forest', 'thunder', 'shock']
 
 export interface Stage {
   id: number
@@ -193,7 +193,7 @@ const BASE_STAGES: Stage[] = [
     e('star', 'speedy', 7, 6, 'phoenix'),
     e('triangle', 'speedy', 6, 6, 'eagle'),
     e('round', 'tanky', 6, 7, 'ice')
-  ], 320, 95),
+  ], 320, 95, { arenaType: 'shock' }),
   s(23, 'Void Nexus', [
     e('star', 'balanced', 7, 7, 'chip'),
     e('quadratic', 'tanky', 7, 7, 'prisma')
@@ -234,7 +234,7 @@ const BASE_STAGES: Stage[] = [
   s(31, 'Savage Coliseum', [
     e('triangle', 'speedy', 9, 9, 'thunderstorm'),
     e('quadratic', 'tanky', 9, 9, 'castle')
-  ], 430, 125),
+  ], 430, 125, { arenaType: 'shock', bouncers: 1 }),
   s(32, 'Embercore Pit', [
     e('star', 'speedy', 10, 9, 'fire'),
     e('cushioned', 'tanky', 9, 10, 'wulf'),
@@ -278,7 +278,7 @@ const BASE_STAGES: Stage[] = [
   s(41, 'Nova Arena', [
     e('star', 'speedy', 12, 12, 'scorpion'),
     e('triangle', 'speedy', 12, 11, 'snake')
-  ], 520, 155),
+  ], 520, 155, { arenaType: 'shock' }),
   s(42, 'Magma Caldera', [
     e('star', 'speedy', 13, 12, 'fire'),
     e('cushioned', 'tanky', 12, 13, 'wulf'),
@@ -302,7 +302,7 @@ const BASE_STAGES: Stage[] = [
   s(46, 'Zenith Arena', [
     e('star', 'speedy', 14, 13, 'thunderstorm'),
     e('triangle', 'speedy', 13, 14, 'eagle')
-  ], 560, 170),
+  ], 560, 170, { arenaType: 'shock', bouncers: 2 }),
   s(47, 'Pyroclast', [
     e('star', 'speedy', 14, 14, 'fire'),
     e('cushioned', 'tanky', 13, 14, 'wulf')
@@ -329,7 +329,7 @@ const BASE_STAGES: Stage[] = [
   s(51, 'Meteor Circuit', [
     e('star', 'speedy', 15, 14, 'thunderstorm'),
     e('quadratic', 'tanky', 14, 15, 'chip')
-  ], 600, 180),
+  ], 600, 180, { arenaType: 'shock' }),
   s(52, 'Inferno Chasm', [
     e('star', 'speedy', 15, 15, 'fire'),
     e('triangle', 'speedy', 15, 14, 'snake'),
@@ -374,7 +374,7 @@ const BASE_STAGES: Stage[] = [
     e('star', 'speedy', 17, 17, 'scorpion'),
     e('triangle', 'speedy', 17, 17, 'snake'),
     e('cushioned', 'tanky', 17, 17, 'wulf')
-  ], 690, 210),
+  ], 690, 210, { arenaType: 'shock', bouncers: 1 }),
   s(62, 'Charcoal Arena', [
     e('star', 'speedy', 18, 17, 'fire'),
     e('round', 'tanky', 17, 18, 'castle')
@@ -421,7 +421,7 @@ const BASE_STAGES: Stage[] = [
   s(71, 'Diamond Apex', [
     e('star', 'speedy', 20, 19, 'scorpion'),
     e('triangle', 'speedy', 19, 20, 'snake')
-  ], 780, 235),
+  ], 780, 235, { arenaType: 'shock' }),
   s(72, 'Magma Spire', [
     e('star', 'speedy', 20, 20, 'fire'),
     e('cushioned', 'tanky', 19, 20, 'wulf'),

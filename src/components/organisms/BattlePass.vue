@@ -17,6 +17,11 @@ import {
 } from '@/use/useModels'
 import type { TopPartId } from '@/types/spinner'
 import useSounds from '@/use/useSound.ts'
+import usePvpStats, { HONOR_PER_STAGE, HONOR_TOTAL_STAGES } from '@/use/usePvpStats'
+import usePVP from '@/use/usePVP'
+import {
+  buySkin
+} from '@/use/useModels'
 
 const {
   currentXp,
@@ -31,9 +36,27 @@ const {
   isMaxed
 } = useBattlePass()
 
+const {
+  honor: honorPoints,
+  honorStages: honorUnlockedStages,
+  isHonorMaxed,
+  honorProgressFraction,
+  pendingHonorClaims,
+  isHonorStageClaimed,
+  isHonorStageUnlocked,
+  claimHonorStage
+} = usePvpStats()
+
+const { canShowPvP } = usePVP()
+
+const emit = defineEmits<{
+  (e: 'coins-awarded', sourceEl: HTMLElement): void
+}>()
+
 const { t } = useI18n()
 
 const isModalOpen = ref(false)
+const bpBtnRef = ref<HTMLElement | null>(null)
 
 // ─── Derived UI state ───────────────────────────────────────────────────────
 
@@ -119,11 +142,43 @@ const scrollToCurrentStage = () => {
 watch(isModalOpen, (open) => {
   if (!open) {
     offeredSkins.value = {}
+    honorOfferedSkins.value = {}
     return
   }
   refreshOfferedSkins()
+  refreshHonorOfferedSkins()
   nextTick(() => scrollToCurrentStage())
 })
+
+// ─── Honor Track ──────────────────────────────────────────────────────────
+
+const showHonorInfo = ref(false)
+
+/** Honor stage cards — each grants a skin. */
+const honorStageCards = computed(() =>
+  Array.from({ length: HONOR_TOTAL_STAGES }, (_, i) => {
+    const stage = i + 1
+    return {
+      stage,
+      unlocked: isHonorStageUnlocked(stage),
+      claimed: isHonorStageClaimed(stage),
+      inProgress: !isHonorMaxed.value && stage === honorUnlockedStages.value + 1
+    }
+  })
+)
+
+// Offered skins for honor track stages
+const honorOfferedSkins = ref<Record<number, SpinnerModelId | null>>({})
+
+const refreshHonorOfferedSkins = () => {
+  const stages = honorStageCards.value.filter(c => !c.claimed).map(c => c.stage)
+  const pool = shuffled(unownedSkinModelIds())
+  const result: Record<number, SpinnerModelId | null> = {}
+  stages.forEach((stage, idx) => {
+    result[stage] = pool[idx] ?? null
+  })
+  honorOfferedSkins.value = result
+}
 
 // ─── Claim action ──────────────────────────────────────────────────────────
 
@@ -131,7 +186,26 @@ const onClaim = (stage: number) => {
   const { playSound } = useSounds()
   playSound('happy')
   const res = claimStage(stage)
-  if (res) refreshOfferedSkins()
+  if (res) {
+    if (res.coins > 0 && bpBtnRef.value) emit('coins-awarded', bpBtnRef.value)
+    refreshOfferedSkins()
+    refreshHonorOfferedSkins()
+  }
+}
+
+const onClaimHonor = (stage: number) => {
+  const skin = honorOfferedSkins.value[stage]
+  if (!skin) return
+  if (!claimHonorStage(stage)) return
+  const { playSound } = useSounds()
+  playSound('happy')
+  // Unlock the skin everywhere (same as BP skin claim)
+  for (const topPartId of Object.keys(SKINS_PER_TOP) as TopPartId[]) {
+    if (SKINS_PER_TOP[topPartId].includes(skin)) {
+      buySkin(topPartId, skin)
+    }
+  }
+  refreshHonorOfferedSkins()
 }
 </script>
 
@@ -139,8 +213,9 @@ const onClaim = (stage: number) => {
   //- Open-modal button (positioned by parent flex row in SpinnerArena)
   div.battle-pass
     button.group.cursor-pointer.z-10.transition-transform(
+      ref="bpBtnRef"
       class="hover:scale-[103%] active:scale-90 scale-80 sm:scale-110"
-      :class="{ 'hint-bounce': hasUnclaimedReward }"
+      :class="{ 'hint-bounce': hasUnclaimedReward || (canShowPvP && pendingHonorClaims > 0) }"
       @click="isModalOpen = true"
     )
       div.relative
@@ -158,9 +233,9 @@ const onClaim = (stage: number) => {
             ) /{{ BP_TOTAL_STAGES }}
           //- Tiny unclaimed-count badge
           div.absolute.flex.items-center.justify-center.rounded-full.font-black.game-text(
-            v-if="pendingClaimCount > 0"
+            v-if="pendingClaimCount + (canShowPvP ? pendingHonorClaims : 0) > 0"
             class="bg-red-500 text-white text-[9px] w-4 h-4 -top-1 -right-1 border border-[#0f1a30]"
-          ) {{ pendingClaimCount }}
+          ) {{ pendingClaimCount + (canShowPvP ? pendingHonorClaims : 0) }}
 
   //- Battle Pass Modal
   FModal(
@@ -168,7 +243,7 @@ const onClaim = (stage: number) => {
     :is-closable="true"
     :title="t('battlePass')"
   )
-    div(class="space-y-3 px-1 sm:px-3 py-2")
+    div(class="space-y-3 px-1 sm:px-3 py-2 max-h-[70vh] overflow-y-auto")
       //- Summary row: current stage + xp progress bar
       div(class="flex items-center gap-2 px-1 sm:px-2")
         div.flex.flex-col.items-start.shrink-0
@@ -258,6 +333,95 @@ const onClaim = (stage: number) => {
                 span.text-amber-300 {{ Math.floor(progressFraction * 100) }}%
               span.text-slate-500(v-else) —
 
+      //- ── Honor Track (only visible when PvP is enabled) ──────────────
+      div.rounded-xl.border-2.border-purple-700.bg-purple-900.bg-opacity-20.p-3(
+        v-if="canShowPvP"
+        class="mt-2 space-y-2"
+      )
+        //- Header row with title + info icon
+        div.flex.items-center.justify-between
+          div.flex.items-center.gap-2
+            span.text-purple-300.font-black.game-text.uppercase(class="text-xs sm:text-sm") {{ t('honorTrack') }}
+            //- Info tooltip toggle
+            button.cursor-pointer.flex.items-center.justify-center.rounded-full.border.border-purple-500.text-purple-300.transition-colors(
+              class="w-4 h-4 sm:w-5 sm:h-5 hover:bg-purple-800"
+              @click="showHonorInfo = !showHonorInfo"
+            )
+              span.font-bold(class="text-[9px] sm:text-[10px]") ?
+          //- Progress
+          span.text-purple-300.font-bold.game-text(class="text-[10px] sm:text-xs")
+            template(v-if="isHonorMaxed") {{ t('complete') }}
+            template(v-else) {{ honorPoints }}/{{ HONOR_PER_STAGE }} {{ t('honorAbbr') }}
+
+        //- Info tooltip (toggled)
+        div.text-purple-200.rounded-lg.bg-purple-900.bg-opacity-60.p-2(
+          v-if="showHonorInfo"
+          class="text-[9px] sm:text-xs leading-snug"
+        ) {{ t('honorInfo') }}
+
+        //- Honor progress bar
+        div.relative.w-full.overflow-hidden.rounded-full.border(
+          v-if="!isHonorMaxed"
+          class="h-2 bg-slate-800/70 border-purple-700/50"
+        )
+          div.h-full.rounded-full.transition-all(
+            class="bg-gradient-to-r from-purple-500 via-purple-400 to-yellow-400"
+            :style="{ width: `${honorProgressFraction * 100}%` }"
+          )
+
+        //- Honor stage cards (3 skins)
+        div.flex.gap-2.justify-center
+          div(
+            v-for="card in honorStageCards"
+            :key="card.stage"
+            class="flex flex-col items-center rounded-xl p-2 border-2 transition-all w-20 sm:w-24"
+            :class="[\
+              card.claimed \
+                ? 'bg-green-900/40 border-green-500/50' \
+                : card.unlocked \
+                  ? 'bg-purple-900/40 border-purple-400' \
+                  : card.inProgress \
+                    ? 'bg-purple-900/25 border-purple-500/70' \
+                    : 'bg-purple-900/20 border-purple-700/60'\
+            ]"
+          )
+            //- Stage label
+            div.text-purple-300.font-bold.uppercase(class="text-[8px] sm:text-[10px]") H{{ card.stage }}
+
+            //- Skin preview
+            template(v-if="honorOfferedSkins[card.stage]")
+              div.skin-thumb-wrap.relative.flex.items-center.justify-center(
+                class="w-8 h-8 sm:w-10 sm:h-10 my-0.5"
+              )
+                div.absolute.inset-0.rounded-full.pointer-events-none.skin-thumb-halo
+                img(
+                  :src="modelImgPath(honorOfferedSkins[card.stage])"
+                  class="relative w-full h-full object-contain"
+                  :class="{ 'opacity-60': !card.unlocked && !card.claimed }"
+                )
+            template(v-else)
+              div.flex.items-center.justify-center.text-purple-500(class="w-8 h-8 sm:w-10 sm:h-10 my-0.5 text-[10px]") ?
+
+            //- Skin label
+            div.font-black.game-text.text-purple-300.uppercase.tracking-wider.leading-tight(
+              v-if="honorOfferedSkins[card.stage]"
+              class="text-[7px] sm:text-[9px] truncate max-w-full"
+            ) {{ MODEL_LABELS[honorOfferedSkins[card.stage]] }}
+
+            //- Status
+            div(class="mt-0.5 text-[8px] sm:text-[10px] font-bold")
+              span.text-green-400(v-if="card.claimed") ✓
+              template(v-else-if="card.unlocked")
+                FIconButton(
+                  type="primary"
+                  size="sm"
+                  icon="right"
+                  @click="onClaimHonor(card.stage)"
+                )
+              template(v-else-if="card.inProgress")
+                span.text-purple-300 {{ Math.floor(honorProgressFraction * 100) }}%
+              span.text-slate-500(v-else) —
+
       //- Footer tip
       div.text-center(class="text-[10px] sm:text-xs text-slate-400")
         template(v-if="isMaxed")
@@ -293,6 +457,9 @@ en:
   battlePassComplete: "Battle Pass complete — nice work!"
   rewardsReady: "You have {n} reward(s) ready to collect!"
   xpHint: "Win campaign fights for +50xp, leaderboard fights for +25xp. Losses give +12xp."
+  honorTrack: "Honor Track"
+  honorAbbr: "HP"
+  honorInfo: "Win PvP battles to earn Honor Points (HP). Fair-game (Level 1) wins give 100 HP. 3 wins unlock 1 skin. Beat stronger opponents for bonus HP!"
 de:
   battlePass: "Battle Pass"
   complete: "ABGESCHLOSSEN"
@@ -300,6 +467,9 @@ de:
   battlePassComplete: "Battle Pass abgeschlossen — gut gemacht!"
   rewardsReady: "Du hast {n} Belohnung(en) zum Abholen!"
   xpHint: "Kampagnenkämpfe gewinnen gibt +50xp, Bestenlisten-Kämpfe +25xp. Niederlagen geben +12xp."
+  honorTrack: "Ehren-Track"
+  honorAbbr: "EP"
+  honorInfo: "Gewinne PvP-Kämpfe für Ehrenpunkte (EP). Fairer Kampf (Level 1) gibt 100 EP. 3 Siege schalten 1 Skin frei. Besiege stärkere Gegner für Bonus-EP!"
 fr:
   battlePass: "Battle Pass"
   complete: "TERMINÉ"
@@ -307,6 +477,9 @@ fr:
   battlePassComplete: "Battle Pass terminé — bien joué !"
   rewardsReady: "Tu as {n} récompense(s) à récupérer !"
   xpHint: "Gagne des combats de campagne pour +50xp, classement +25xp. Défaites : +12xp."
+  honorTrack: "Piste d'Honneur"
+  honorAbbr: "PH"
+  honorInfo: "Gagne des combats PvP pour obtenir des Points d'Honneur (PH). Combat équitable (Niveau 1) donne 100 PH. 3 victoires débloquent 1 skin. Bats des adversaires plus forts pour des PH bonus !"
 es:
   battlePass: "Pase de Batalla"
   complete: "COMPLETO"
@@ -314,6 +487,9 @@ es:
   battlePassComplete: "¡Pase de Batalla completado — buen trabajo!"
   rewardsReady: "¡Tienes {n} recompensa(s) para reclamar!"
   xpHint: "Gana combates de campaña para +50xp, de clasificación +25xp. Derrotas: +12xp."
+  honorTrack: "Pista de Honor"
+  honorAbbr: "PH"
+  honorInfo: "Gana combates PvP para obtener Puntos de Honor (PH). Combate justo (Nivel 1) da 100 PH. 3 victorias desbloquean 1 skin. ¡Vence a rivales más fuertes para PH extra!"
 jp:
   battlePass: "バトルパス"
   complete: "完了"
@@ -321,6 +497,9 @@ jp:
   battlePassComplete: "バトルパス達成 — お見事！"
   rewardsReady: "{n} 個の報酬を受け取れます！"
   xpHint: "キャンペーン戦勝利で +50xp、ランキング戦で +25xp。敗北でも +12xp。"
+  honorTrack: "名誉トラック"
+  honorAbbr: "名誉P"
+  honorInfo: "PvPバトルに勝利して名誉ポイント(名誉P)を獲得。フェアゲーム（レベル1）勝利で100名誉P。3勝で1スキン解放。強い相手に勝つとボーナス名誉P！"
 kr:
   battlePass: "배틀 패스"
   complete: "완료"
@@ -328,6 +507,9 @@ kr:
   battlePassComplete: "배틀 패스 완료 — 멋져요!"
   rewardsReady: "받을 수 있는 보상이 {n} 개 있습니다!"
   xpHint: "캠페인 전투 승리 +50xp, 리더보드 전투 +25xp. 패배 시 +12xp."
+  honorTrack: "명예 트랙"
+  honorAbbr: "명예P"
+  honorInfo: "PvP 전투에서 승리하여 명예 포인트(명예P)를 획득하세요. 공정 게임(레벨 1) 승리 시 100 명예P. 3승으로 스킨 1개 해제. 강한 상대를 이기면 보너스 명예P!"
 zh:
   battlePass: "战斗通行证"
   complete: "完成"
@@ -335,6 +517,9 @@ zh:
   battlePassComplete: "战斗通行证已完成 — 干得漂亮！"
   rewardsReady: "你有 {n} 个奖励可以领取！"
   xpHint: "赢得战役战斗 +50xp，排行榜战斗 +25xp，失败 +12xp。"
+  honorTrack: "荣誉通道"
+  honorAbbr: "荣誉点"
+  honorInfo: "赢得PvP战斗获得荣誉点数(荣誉点)。公平对战（等级1）胜利获得100荣誉点。3胜解锁1个皮肤。击败更强对手获得额外荣誉点！"
 ru:
   battlePass: "Боевой пропуск"
   complete: "ЗАВЕРШЕНО"
@@ -342,4 +527,7 @@ ru:
   battlePassComplete: "Боевой пропуск пройден — отличная работа!"
   rewardsReady: "У вас {n} награда(ы) к получению!"
   xpHint: "Побед в кампании +50xp, в таблице лидеров +25xp. Поражения дают +12xp."
+  honorTrack: "Путь Чести"
+  honorAbbr: "ОЧ"
+  honorInfo: "Побеждайте в PvP-боях, чтобы получить Очки Чести (ОЧ). Честный бой (Уровень 1) даёт 100 ОЧ. 3 победы открывают 1 скин. Победа над сильными соперниками даёт бонусные ОЧ!"
 </i18n>

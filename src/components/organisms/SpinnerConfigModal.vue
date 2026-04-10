@@ -187,14 +187,14 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
 
       //- ── Top Blade Parts ──────────────────────────────────────────────────
       div.top-col
-        div.relative.flex.justify-center.items-center.mb-1
+        div.relative.flex.justify-center.items-center.mb-2
           div.absolute.left-0.flex.items-center.gap-1.rounded.font-bold(
-            class="top-1/2 -translate-y-[50%] px-1.5 py-0.5 bg-yellow-600/60 text-yellow-300 text-[9px] sm:text-xs"
+            class="top-1/2 -translate-y-[50%] px-1.5 py-0.5 bg-yellow-600/60 text-yellow-300 text-[11px] sm:text-xs"
           )
-            IconCoin(class="w-3 h-3 sm:w-3.5 sm:h-3.5 text-yellow-300")
+            IconCoin(class="w-3.5 h-3.5 sm:w-3.5 sm:h-3.5 text-yellow-300")
             span {{ coins }}g
           h3.text-yellow-300.font-black.uppercase.italic(
-            class="text-[10px] sm:text-sm tracking-wider"
+            class="text-xs sm:text-sm tracking-wider"
           ) {{ t('topBlade') }}
         div.grid.top-grid
           div(
@@ -236,7 +236,7 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
                   :title="t('purchaseMoreSkins')"
                 ) +
             div.text-center.part-card-body
-              div.text-white.font-bold.truncate.game-text(class="text-[9px] sm:text-xs") {{ part.label }}
+              div.text-white.font-bold.truncate.game-text(class="text-[11px] sm:text-xs") {{ part.label }}
               div.flex.flex-col.items-center.stat-list
                 div.flex.items-center.justify-center.text-red-400.rounded-full.stat-glass(class="gap-0.5 px-[2px] py-[1px]")
                   IconAttack.inline-block.stat-icon
@@ -270,7 +270,7 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
         //- ── Bottom Parts ───────────────────────────────────────────────────
         div
           h3.text-yellow-300.font-black.uppercase.italic.mb-1(
-            class="text-[10px] sm:text-sm tracking-wider"
+            class="text-xs sm:text-sm tracking-wider"
           ) {{ t('bottomPart') }}
           div.grid.grid-cols-3.bottom-grid
             div(
@@ -283,7 +283,7 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
               : 'bg-slate-700 border-2 border-slate-600 hover:border-slate-400'"
             )
               div.text-center.part-card-body
-                div.text-white.font-bold.game-text(class="text-[9px] sm:text-xs") {{ part.label }}
+                div.text-white.font-bold.game-text(class="text-[11px] sm:text-xs") {{ part.label }}
                 div.flex.flex-col.items-center.stat-list
                   div.flex.items-center.justify-center.text-cyan-400.rounded-full.stat-glass(class="gap-0.5 px-[2px] py-[1px]")
                     IconSpeed.inline-block.stat-icon
@@ -314,7 +314,7 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
         //- ── Stats Summary ──────────────────────────────────────────────────
         div.stats-bar(class="border-t border-slate-500/50")
           h3.text-yellow-300.font-black.uppercase.italic(
-            class="text-[9px] sm:text-xs tracking-wider"
+            class="text-xs sm:text-xs tracking-wider"
           ) {{ t('statsLabel') }}
           div.flex.flex-wrap.justify-center.stats-items
             div.flex.items-center
@@ -394,55 +394,58 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
   -webkit-backdrop-filter: blur(6px)
   border: 1px solid rgba(255, 255, 255, 0.08)
   line-height: 1
+  min-height: 1.1rem
 
 // ─── Base Layout (portrait / desktop) ────────────────────────────────────────
 
 .config-layout
   display: flex
   flex-direction: column
-  gap: 0.375rem
+  gap: 0.5rem
   padding: 0.25rem 0.25rem
+  max-height: 75vh
+  overflow-y: auto
 
 .top-col, .bottom-col
   min-width: 0
 
 .top-grid
   grid-template-columns: repeat(3, 1fr)
-  gap: 0.375rem
+  gap: 0.5rem
   // Leave room for the floating skin row that overflows above each card
-  padding-top: 1rem
-  row-gap: 1.25rem
+  padding-top: 1.1rem
+  row-gap: 1.4rem
 
 .bottom-grid
-  gap: 0.375rem
+  gap: 0.5rem
 
 .part-card-body
-  padding: 0.2rem 0.2rem 0
+  padding: 0 0 0
 
 // Top part card needs internal top padding so the floating row above
 // the border doesn't visually collide with the part label.
 .top-part-card
-  padding-top: 0.375rem
+  padding-top: 0.125rem
 
 .stat-list
   margin-top: 0.125rem
-  gap: 1px
-  font-size: 9px
+  gap: 2px
+  font-size: 11px
 
   span
     text-shadow: 1px 1px 0 #333, -1px -1px 0 #333, 1px -1px 0 #333, -1px 1px 0 #333, 1px 1px 0 #333
 
 .stat-icon
-  width: 0.625rem
-  height: 0.625rem
+  width: 0.8rem
+  height: 0.8rem
 
 // Floating skin row sitting above the top-part card border
 .skin-row
-  top: -0.85rem
+  top: -0.95rem
 
 .skin-row-thumb
-  width: 0.95rem
-  height: 0.95rem
+  width: 1.15rem
+  height: 1.15rem
   line-height: 0
 
 .skin-row-img
@@ -450,9 +453,9 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
   height: 100%
 
 .skin-plus-btn
-  width: 1.05rem
-  height: 1.05rem
-  font-size: 0.85rem
+  width: 1.25rem
+  height: 1.25rem
+  font-size: 1rem
   line-height: 1
   padding: 0
 
@@ -461,18 +464,18 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
 .level-badge
   right: -0.2rem
   bottom: -0.25rem
-  font-size: 8px
+  font-size: 9px
   line-height: 1
-  padding: 1px 3px
+  padding: 1px 4px
   text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000
 
 .upgrade-btn
-  font-size: 8px
-  padding: 0.125rem 0
+  font-size: 10px
+  padding: 0.2rem 0
 
 .upgrade-coin-icon
-  width: 0.625rem
-  height: 0.625rem
+  width: 0.75rem
+  height: 0.75rem
 
 .stats-bar
   padding-top: 0.375rem
@@ -484,16 +487,19 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
 
 .stats-items
   gap: 0.5rem
-  font-size: 10px
+  font-size: 12px
 
 .stat-summary-icon
-  width: 0.75rem
-  height: 0.75rem
+  width: 0.875rem
+  height: 0.875rem
   margin-right: 0.125rem
 
 // ─── sm+ breakpoint (≥640px) ─────────────────────────────────────────────────
 
 @media (min-width: 640px)
+  .config-layout
+    max-height: 80vh
+
   .top-grid
     grid-template-columns: repeat(6, 1fr)
     gap: 0.5rem
@@ -510,49 +516,49 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
     padding-top: 0.5rem
 
   .stat-list
-    font-size: 11px
+    font-size: 12px
     gap: 2px
 
   .stat-icon
-    width: 0.75rem
-    height: 0.75rem
+    width: 0.85rem
+    height: 0.85rem
 
   .skin-row
     top: -1rem
 
   .skin-row-thumb
-    width: 1.25rem
-    height: 1.25rem
+    width: 1.35rem
+    height: 1.35rem
 
   .skin-row-img
     width: 100%
     height: 100%
 
   .skin-plus-btn
-    width: 1.35rem
-    height: 1.35rem
-    font-size: 1rem
+    width: 1.45rem
+    height: 1.45rem
+    font-size: 1.1rem
 
   .level-badge
     right: -0.3rem
     bottom: -0.35rem
-    font-size: 10px
+    font-size: 11px
     padding: 2px 5px
 
   .upgrade-btn
-    font-size: 10px
-    padding: 0.125rem 0
+    font-size: 11px
+    padding: 0.2rem 0
 
   .upgrade-coin-icon
-    width: 0.625rem
-    height: 0.625rem
+    width: 0.75rem
+    height: 0.75rem
 
   .stats-items
-    font-size: 12px
+    font-size: 13px
 
   .stat-summary-icon
-    width: 0.875rem
-    height: 0.875rem
+    width: 1rem
+    height: 1rem
 
 // ─── Landscape mobile (short viewport) ──────────────────────────────────────
 
@@ -561,6 +567,7 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
     flex-direction: row
     gap: 0.5rem
     padding: 0.125rem 0.25rem
+    max-height: 65vh
 
   .top-col
     flex: 3
@@ -653,7 +660,7 @@ en:
   selectButton: "SELECT"
 de:
   bladeLabel: "Blade"
-  topBlade: "Oberteil"
+  topBlade: "Obere Klinge"
   bottomPart: "Unterteil"
   statsLabel: "Werte"
   selectSkin: "Skin auswählen"

@@ -16,8 +16,13 @@ import {
 import type { TopPartId } from '@/types/spinner'
 import useSounds from '@/use/useSound.ts'
 
+const emit = defineEmits<{
+  (e: 'coins-awarded', sourceEl: HTMLElement): void
+}>()
+
 const { addCoins } = useSpinnerConfig()
 const { t } = useI18n()
+const dailyBtnRef = ref<HTMLElement | null>(null)
 
 // ─── Daily Rewards Config ────────────────────────────────────────────────────
 
@@ -156,6 +161,7 @@ const collect = (dayIndex: number) => {
 
   // Coin reward is always granted, on every day (skin days are additive).
   addCoins(DAILY_REWARDS[dayIndex]!)
+  if (dailyBtnRef.value) emit('coins-awarded', dailyBtnRef.value)
 
   const { playSound } = useSounds()
   playSound('happy')
@@ -196,6 +202,7 @@ const collect = (dayIndex: number) => {
   //- Open-modal button (positioned by parent flex row in SpinnerArena)
   div.daily-rewards
     button.group.cursor-pointer.z-10.transition-transform(
+      ref="dailyBtnRef"
       class="hover:scale-[103%] active:scale-90 scale-80 sm:scale-110"
       :class="{ 'hint-bounce': hasDailyRewardReady }"
       @click="isModalOpen = true"

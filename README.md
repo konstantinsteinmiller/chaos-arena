@@ -14,9 +14,8 @@ WIP: [playable demo](https://konstantinsteinmiller.github.io/chaos-arena/)
 
 - [x] Main Menu
     - [x] start game button
-    - [ ] create Logo
+  - [x] create Logo
     - [x] settings button
-    - [ ] background image
     - [x] version
     - [x] mute music and sound
     -
@@ -32,23 +31,15 @@ WIP: [playable demo](https://konstantinsteinmiller.github.io/chaos-arena/)
 - [ ] Reward system
     - [ ] wheel spinner for 2x, 3x, 4x and 5x rewards after rewarded videos
 
-- [ ] Npc logic
-    - [ ]
-
-- [ ] Campaign
-    - [ ] 
-
 - [x] OptionsModal
     - [x] music
     - [x] do not ask rules again
     - [x] language options
     - [x] Volume slider for music and sound effects
     - [x] remove sound options on mobile
-    - [ ] reset progress button
+  - [x] reset progress button
 
-- [ ] Sound and bg music
-
-- [ ] (native) dark mode adjustment
+- [x] Sound and bg music
 
 - Build-Toolchain
     - [ ] create Demo version
@@ -66,13 +57,10 @@ WIP: [playable demo](https://konstantinsteinmiller.github.io/chaos-arena/)
         - [ ] ads
         - [ ] performance tracking
 
-- [ ] complete Translations
+- [x] complete Translations
 - [x] full-version protection for web
-- [ ] asset loader step for web build to avoid poping images FLogoProgress
+- [x] asset loader step for web build to avoid poping images FLogoProgress
 - [ ] search for marketing person
-- [ ] Opt: 2nd card Theme: gibli
-
-- [ ] Steam page
 
 ## Refactorings
 

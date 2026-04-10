@@ -18,7 +18,14 @@
       "Bash(git mv:*)",
       "Bash(pnpm build:*)",
       "Bash(pnpm native-dev:*)",
-      "WebFetch(domain:docs.crazygames.com)"
+      "WebFetch(domain:docs.crazygames.com)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(grep:*)",
+      "Bash(npm ls:*)",
+      "Bash(pnpm add:*)",
+      "Bash(curl -s \"http://localhost:5174/src/components/organisms/PvPLobbyModal.vue?vue&type=template&lang.js\")",
+      "Bash(curl -s \"http://localhost:5174/src/components/organisms/PvPLobbyModal.vue?t=$\\(date +%s\\)&vue&type=template&lang.js\")"
     ]
   }
 }
