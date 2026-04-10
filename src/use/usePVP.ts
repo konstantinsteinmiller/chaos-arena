@@ -297,8 +297,9 @@ const setupConnection = (connection: DataConnection) => {
 // ─── Public API ────────────────────────────────────────────────────────────
 
 const usePVP = () => {
+  console.log('window?.location.host: ', window?.location.host, window?.location.hostname)
   const canShowPvP = computed(() =>
-    isPvpEnabled && ((isSdkActive.value && isCrazyGamesFullRelease) || isDebug.value)
+    isPvpEnabled && ((isSdkActive.value && isCrazyGamesFullRelease) || isDebug.value || window?.location.host === 'konstantinsteinmiller.github.io')
   )
 
   const bothReady = computed(() => hostReady.value && guestReady.value)
