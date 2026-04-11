@@ -45,6 +45,8 @@ interface PvpStatsState {
   claimedHonorStages: number[]
   /** Maps honor stage number → skin model id that was awarded. */
   claimedHonorSkins: Record<number, SpinnerModelId>
+  /** Maps honor stage number → skin model id previewed (persisted). */
+  offeredHonorSkins: Record<number, SpinnerModelId>
 }
 
 const generateUUID = (): string =>
@@ -60,7 +62,8 @@ const defaultState = (): PvpStatsState => ({
   honor: 0,
   honorStages: 0,
   claimedHonorStages: [],
-  claimedHonorSkins: {}
+  claimedHonorSkins: {},
+  offeredHonorSkins: {}
 })
 
 const loadState = (): PvpStatsState => {
@@ -80,7 +83,8 @@ const loadState = (): PvpStatsState => {
               (n: unknown) => typeof n === 'number' && n >= 1 && n <= HONOR_TOTAL_STAGES
             )
             : [],
-          claimedHonorSkins: p.claimedHonorSkins ?? {}
+          claimedHonorSkins: p.claimedHonorSkins ?? {},
+          offeredHonorSkins: p.offeredHonorSkins ?? {}
         }
       }
     }
@@ -169,6 +173,17 @@ const claimHonorStage = (stage: number, skin?: SpinnerModelId): boolean => {
   return true
 }
 
+/** Reset honor track progress (called when battle pass season resets).
+ *  Preserves win/loss record and player identity. */
+export const resetHonorTrack = () => {
+  state.value.honor = 0
+  state.value.honorStages = 0
+  state.value.claimedHonorStages = []
+  state.value.claimedHonorSkins = {}
+  state.value.offeredHonorSkins = {}
+  saveState()
+}
+
 const pendingHonorClaims = computed(() => {
   let n = 0
   for (let i = 1; i <= state.value.honorStages; i++) {
@@ -210,6 +225,11 @@ export default function usePvpStats() {
     isHonorStageClaimed,
     isHonorStageUnlocked,
     claimHonorStage,
-    claimedHonorSkins: computed(() => state.value.claimedHonorSkins)
+    claimedHonorSkins: computed(() => state.value.claimedHonorSkins),
+    persistedHonorOffers: computed(() => state.value.offeredHonorSkins),
+    saveOfferedHonorSkins: (offers: Record<number, SpinnerModelId>) => {
+      state.value.offeredHonorSkins = offers
+      saveState()
+    }
   }
 }

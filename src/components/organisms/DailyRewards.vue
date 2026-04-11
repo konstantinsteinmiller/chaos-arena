@@ -40,6 +40,8 @@ interface DailyState {
   lastCollected: string | null
   /** Maps day index → skin model id that was awarded on that day. */
   claimedSkins: Record<number, SpinnerModelId>
+  /** Maps day index → skin model id previewed (persisted so it doesn't randomize). */
+  offeredSkins?: Record<number, SpinnerModelId>
 }
 
 // ─── Skin Pool Helpers ──────────────────────────────────────────────────────
@@ -129,29 +131,58 @@ const sampleDistinct = <T, >(pool: T[], count: number): T[] =>
 
 const refreshOfferedSkins = () => {
   const days = Array.from(SKIN_REWARD_DAYS).sort((a, b) => a - b)
-  const picks = sampleDistinct(unownedSkinModelIds(), days.length)
-  const result: Record<number, SpinnerModelId | null> = {}
-  days.forEach((d, idx) => {
-    result[d] = picks[idx] ?? null
-  })
+  const persisted = state.value.offeredSkins ?? {}
+  const result: Record<number, SpinnerModelId> = {}
+
+  // Collect skin ids already locked in (claimed or still-valid offers)
+  const taken = new Set<SpinnerModelId>()
+  for (const d of days) {
+    // Claimed days never change
+    if (state.value.claimedSkins[d]) continue
+    // Keep existing offer if the skin is still unowned somewhere
+    const prev = persisted[d]
+    if (prev) {
+      const stillUnowned = (Object.keys(SKINS_PER_TOP) as TopPartId[]).some(
+        top => SKINS_PER_TOP[top].includes(prev) && !isSkinOwned(top, prev)
+      )
+      if (stillUnowned) {
+        result[d] = prev
+        taken.add(prev)
+      }
+    }
+  }
+
+  // Fill remaining unclaimed days that need a new skin
+  const pool = shuffled(unownedSkinModelIds().filter(m => !taken.has(m)))
+  let poolIdx = 0
+  for (const d of days) {
+    if (state.value.claimedSkins[d]) continue
+    if (result[d]) continue
+    if (poolIdx < pool.length) {
+      result[d] = pool[poolIdx]!
+      poolIdx++
+    }
+  }
+
   offeredSkins.value = result
+  // Persist so offers survive modal close/reopen
+  state.value.offeredSkins = result
+  saveState(state.value)
 }
 
 // Re-evaluate streak break whenever the modal opens
 watch(isModalOpen, (open) => {
-  if (!open) {
-    offeredSkins.value = {}
-    return
-  }
+  if (!open) return
   const s = loadState()
   const today = todayStr()
   const yesterday = yesterdayStr()
 
   if (s.lastCollected && s.lastCollected !== today && s.lastCollected !== yesterday) {
-    // Missed a day — reset streak
+    // Missed a day — reset streak (clear offers too so new cycle gets fresh skins)
     s.currentDay = 0
     s.lastCollected = null
     s.claimedSkins = {}
+    s.offeredSkins = {}
     saveState(s)
   }
   state.value = s
@@ -203,6 +234,7 @@ const collect = (dayIndex: number) => {
 
   const nextDay = dayIndex + 1 >= DAILY_REWARDS.length ? 0 : dayIndex + 1
   state.value = {
+    ...state.value,
     currentDay: nextDay,
     lastCollected: todayStr()
   }

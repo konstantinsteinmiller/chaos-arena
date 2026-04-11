@@ -23,7 +23,7 @@ const props = withDefaults(defineProps<Props>(), {
   targetEl: null,
   cooldownMs: 10 * 60 * 1000,
   storageKey: 'spinner_chest_ready_at',
-  reward: 100,
+  reward: 80,
   scale: 1,
   auraColor: 'rgba(255,200,0,0.8)'
 })

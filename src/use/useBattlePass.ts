@@ -8,6 +8,7 @@ import {
   type SpinnerModelId
 } from '@/use/useModels'
 import type { TopPartId } from '@/types/spinner'
+import { resetHonorTrack } from '@/use/usePvpStats'
 
 /**
  * Battle Pass progression. 50 stages, 100 xp per stage. Win/loss events
@@ -30,6 +31,8 @@ import type { TopPartId } from '@/types/spinner'
 
 export const BP_TOTAL_STAGES = 50
 export const BP_XP_PER_STAGE = 100
+/** Battle pass season length in days. After this, all progress resets. */
+export const BP_SEASON_DAYS = 30
 
 export const BP_XP_CAMPAIGN_WIN = 50        // 1/2 of a stage
 export const BP_XP_LEADERBOARD_WIN = 25     // 1/4 of a stage
@@ -52,14 +55,35 @@ interface BattlePassState {
   claimedStages: number[]
   /** Maps stage number → skin model id for skin stages that were claimed. */
   claimedSkins: Record<number, SpinnerModelId>
+  /** Maps stage number → skin model id previewed (persisted across sessions). */
+  offeredSkins: Record<number, SpinnerModelId>
+  /** ISO date string when the current season started (first XP gain). */
+  seasonStartedAt: string | null
 }
 
 const defaultState = (): BattlePassState => ({
   xp: 0,
   unlockedStages: 0,
   claimedStages: [],
-  claimedSkins: {}
+  claimedSkins: {},
+  offeredSkins: {},
+  seasonStartedAt: null
 })
+
+/** Days remaining until the current season resets (null if no season active). */
+const daysUntilSeasonReset = (startedAt: string | null): number | null => {
+  if (!startedAt) return null
+  const start = new Date(startedAt).getTime()
+  const now = Date.now()
+  const elapsed = Math.floor((now - start) / (1000 * 60 * 60 * 24))
+  const remaining = BP_SEASON_DAYS - elapsed
+  return remaining > 0 ? remaining : 0
+}
+
+const isSeasonExpired = (startedAt: string | null): boolean => {
+  if (!startedAt) return false
+  return daysUntilSeasonReset(startedAt) === 0
+}
 
 const loadState = (): BattlePassState => {
   try {
@@ -71,20 +95,32 @@ const loadState = (): BattlePassState => {
         typeof parsed?.unlockedStages === 'number' &&
         Array.isArray(parsed?.claimedStages)
       ) {
-        return {
+        const loaded: BattlePassState = {
           xp: parsed.xp,
           unlockedStages: Math.max(0, Math.min(BP_TOTAL_STAGES, parsed.unlockedStages)),
           claimedStages: parsed.claimedStages.filter(
             (n: unknown) => typeof n === 'number' && n >= 1 && n <= BP_TOTAL_STAGES
           ),
-          claimedSkins: parsed.claimedSkins ?? {}
+          claimedSkins: parsed.claimedSkins ?? {},
+          offeredSkins: parsed.offeredSkins ?? {},
+          seasonStartedAt: parsed.seasonStartedAt ?? null
         }
+        // Season expired — reset everything
+        if (isSeasonExpired(loaded.seasonStartedAt)) {
+          seasonResetPending = true
+          return defaultState()
+        }
+        return loaded
       }
     }
   } catch { /* fall through */
   }
   return defaultState()
 }
+
+/** Deferred flag — honor track reset runs on first composable access
+ *  to avoid circular import issues at module load time. */
+let seasonResetPending = false
 
 const state: Ref<BattlePassState> = ref(loadState())
 
@@ -143,7 +179,17 @@ const { addCoins } = useSpinnerConfig()
 
 const addXp = (amount: number) => {
   if (amount <= 0) return
+  // Check for season expiry before adding XP
+  if (isSeasonExpired(state.value.seasonStartedAt)) {
+    state.value = defaultState()
+    resetHonorTrack()
+    saveState()
+  }
   if (state.value.unlockedStages >= BP_TOTAL_STAGES) return
+  // Start season clock on first XP gain
+  if (!state.value.seasonStartedAt) {
+    state.value.seasonStartedAt = new Date().toISOString().slice(0, 10)
+  }
   state.value.xp += amount
   while (
     state.value.xp >= BP_XP_PER_STAGE &&
@@ -168,7 +214,7 @@ export interface ClaimResult {
   skin: SpinnerModelId | null
 }
 
-const claimStage = (stage: number): ClaimResult | null => {
+const claimStage = (stage: number, offeredSkin?: SpinnerModelId | null): ClaimResult | null => {
   if (stage < 1 || stage > BP_TOTAL_STAGES) return null
   if (stage > state.value.unlockedStages) return null
   if (state.value.claimedStages.includes(stage)) return null
@@ -178,8 +224,13 @@ const claimStage = (stage: number): ClaimResult | null => {
 
   if (bpIsSkinStage(stage)) {
     const pool = unownedSkinModelIds()
-    if (pool.length > 0) {
+    // Prefer the skin that was previewed to the player, fall back to random
+    if (offeredSkin && pool.includes(offeredSkin)) {
+      skin = offeredSkin
+    } else if (pool.length > 0) {
       skin = pool[Math.floor(Math.random() * pool.length)]!
+    }
+    if (skin) {
       unlockSkinEverywhere(skin)
       state.value.claimedSkins = { ...state.value.claimedSkins, [stage]: skin }
     } else {
@@ -217,6 +268,9 @@ const pendingClaimCount = computed(() => {
 
 const hasUnclaimedReward = computed(() => pendingClaimCount.value > 0)
 
+/** Days remaining until the season resets (null if season not started yet). */
+const daysUntilReset = computed(() => daysUntilSeasonReset(state.value.seasonStartedAt))
+
 const isStageClaimed = (stage: number): boolean =>
   state.value.claimedStages.includes(stage)
 
@@ -226,6 +280,12 @@ const isStageUnlocked = (stage: number): boolean =>
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 export default function useBattlePass() {
+  // Flush deferred honor-track reset (avoids circular import at module load)
+  if (seasonResetPending) {
+    seasonResetPending = false
+    resetHonorTrack()
+    saveState()
+  }
   return {
     // state
     state,
@@ -235,7 +295,13 @@ export default function useBattlePass() {
     isMaxed,
     hasUnclaimedReward,
     pendingClaimCount,
+    daysUntilReset,
     claimedSkins: computed(() => state.value.claimedSkins),
+    persistedOffers: computed(() => state.value.offeredSkins),
+    saveOfferedSkins: (offers: Record<number, SpinnerModelId>) => {
+      state.value.offeredSkins = offers
+      saveState()
+    },
     // queries
     isStageClaimed,
     isStageUnlocked,

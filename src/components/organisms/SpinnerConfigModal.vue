@@ -15,7 +15,7 @@ import useSpinnerCampaign, { upgradeCost, TOP_UPGRADE_BONUS, BOTTOM_UPGRADE_BONU
 import {
   SKINS_PER_TOP, skinCost,
   modelImgPath, isSkinOwned, buySkin, selectSkin, getSelectedSkin,
-  ownedSkinsForTop, hasUnownedSkinsForTop,
+  hasUnownedSkinsForTop,
   markSkinPickerOpened, wasSkinPickerOpened,
   type SpinnerModelId
 } from '@/use/useModels'
@@ -151,6 +151,7 @@ const skinPickerKey = ref(0)
 
 const openSkinPicker = (topId: TopPartId) => {
   skinPickerTopId.value = topId
+  skinPickerKey.value++
   skinPickerOpen.value = true
   markSkinPickerOpened(topId)
 }
@@ -216,24 +217,7 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
               div.flex.items-center.justify-center.rounded-full.bg-slate-900.border.border-slate-600.pointer-events-auto.skin-row-inner(
                 class="px-1 py-0.5 gap-0.5 sm:gap-1 shadow-md"
               )
-                //- Full skin row (sm+): all owned skins selectable
-                div.skin-row-full
-                  div(
-                    v-for="skinId in ownedSkinsForTop(part.id)"
-                    :key="skinId"
-                    @click.stop="handleSelectSkin(part.id, skinId)"
-                    class="inline-flex shrink-0 rounded-full cursor-pointer transition-all skin-row-thumb"
-                    :class="getSelectedSkin(part.id, Number(activeBladeIndex)) === skinId\
-                      ? 'ring-2 ring-yellow-300/80 scale-110'\
-                      : 'hover:ring-2 hover:ring-slate-300 opacity-60 hover:opacity-100'"
-                    :title="t('skins.' + skinId)"
-                  )
-                    img(
-                      :src="modelImgPath(skinId)"
-                      class="block rounded-full object-cover skin-row-img"
-                      :alt="skinId"
-                    )
-                //- Compact skin row (mobile portrait): selected skin only
+                //- Selected skin only — skin changes happen in the skin shop modal
                 div.skin-row-compact
                   div(
                     class="inline-flex shrink-0 rounded-full skin-row-thumb ring-2 ring-yellow-300/80"
@@ -469,10 +453,6 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
   width: 100%
   height: 100%
 
-// Mobile portrait: show only selected skin, hide full row
-.skin-row-full
-  display: none
-
 .skin-row-compact
   display: flex
   align-items: center
@@ -568,13 +548,9 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
     width: 100%
     height: 100%
 
-  .skin-row-full
+  .skin-row-compact
     display: flex
     align-items: center
-    gap: 0.25rem
-
-  .skin-row-compact
-    display: none
 
   .skin-plus-hitbox
     padding: 0.25rem

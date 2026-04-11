@@ -50,7 +50,15 @@ export interface BottomPart {
  *  - 'partners' → every enemy blade in the team shares a group; no FF
  *  - 'healers'  → like 'partners' + heals on contact; 20% oversize only
  */
-export type BossAbility = 'ghost' | 'split' | 'partners' | 'healers' | 'child-emitter' | 'stat-switch' | 'life-leech'
+export type BossAbility =
+  'ghost'
+  | 'split'
+  | 'partners'
+  | 'healers'
+  | 'child-emitter'
+  | 'stat-switch'
+  | 'life-leech'
+  | 'thunder'
 
 export interface SpinnerConfig {
   topPartId: TopPartId
@@ -141,6 +149,11 @@ export interface SpinnerState {
   // ── teleporter boss ───────────────────────────────────────────────────
   /** Passes through arena walls and emerges on the opposite side. */
   isTeleporter?: boolean
+  // ── thunder boss ──────────────────────────────────────────────────────
+  /** Deals 1 damage/sec to nearby blades within lightning bolt radius. */
+  isThunder?: boolean
+  /** Timestamp of last thunder damage tick per target blade id. */
+  thunderLastHit?: Map<string, number>
 }
 
 // ─── Arena Powerup ───────────────────────────────────────────────────────────

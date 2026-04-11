@@ -22,7 +22,7 @@ export const SPINNER_MODEL_IDS = [
   'piranha', 'thunderstorm',
   'rainbow', 'dark', 'boulder', 'teleporter', 'life-leech',
   'wasp', 'spiky-eagle', 'forest-dragon', 'chain', 'wolf-demon',
-  'rhino', 'golden-eagle'
+  'rhino', 'golden-eagle', 'diamond', 'tsunami'
 ] as const
 
 export type SpinnerModelId = (typeof SPINNER_MODEL_IDS)[number]
@@ -31,13 +31,13 @@ export type SpinnerModelId = (typeof SPINNER_MODEL_IDS)[number]
 export const SKINS_PER_TOP: Record<TopPartId, SpinnerModelId[]> = {
   // "star" top keeps its bold elemental roster. Swapped thunderstorm out
   // to give the new spiky ("triangle") top a jagged-themed lineup.
-  star: ['blades', 'ice', 'wasp', 'tornado', 'reddragon', 'chain', 'axe'],
+  star: ['blades', 'ice', 'wasp', 'reddragon', 'chain', 'axe', 'tornado'],
   // Spiky top — jagged / barbed aesthetic (thunder bolts, thunderstorm,
   // razor-winged eagle).
   triangle: ['thunder', 'snake', 'phoenix', 'eagle', 'spiky-eagle', 'salamaner', 'thunderstorm'],
   round: ['nature', 'turtle', 'piranha', 'bear', 'galaxy', 'golden-eagle', 'wolf-demon', 'dark'],
-  quadratic: ['chip', 'mysticaleye', 'bluedragon', 'angelic', 'prisma', 'forest-dragon', 'rainbow'],
-  cushioned: ['shell', 'shield', 'castle', 'mountain', 'gear', 'boulder'],
+  quadratic: ['chip', 'mysticaleye', 'bluedragon', 'angelic', 'tsunami', 'prisma', 'forest-dragon', 'rainbow'],
+  cushioned: ['shell', 'shield', 'castle', 'mountain', 'gear', 'diamond', 'boulder'],
   piercer: ['scorpion', 'wulf', 'demon', 'hawk', 'rhino', 'ape', 'teleporter']
 }
 
@@ -47,7 +47,7 @@ export const SPECIAL_SKIN_COST = 1500
 /** Special skins with unique VFX — cost 1500 coins and are excluded from
  *  daily rewards and battle pass skin draws. */
 export const SPECIAL_SKINS: ReadonlySet<SpinnerModelId> = new Set([
-  'rainbow', 'dark', 'tornado', 'thunderstorm', 'boulder', 'teleporter'
+  'rainbow', 'dark', 'tornado', 'diamond', 'thunderstorm', 'boulder', 'teleporter'
 ])
 
 /** Returns the coin cost for a given skin. */

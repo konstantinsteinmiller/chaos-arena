@@ -33,7 +33,10 @@ const {
   bpIsSkinStage,
   claimStage,
   claimedSkins,
-  isMaxed
+  isMaxed,
+  daysUntilReset,
+  persistedOffers,
+  saveOfferedSkins
 } = useBattlePass()
 
 const {
@@ -45,7 +48,9 @@ const {
   isHonorStageClaimed,
   isHonorStageUnlocked,
   claimHonorStage,
-  claimedHonorSkins
+  claimedHonorSkins,
+  persistedHonorOffers,
+  saveOfferedHonorSkins
 } = usePvpStats()
 
 const { canShowPvP } = usePVP()
@@ -118,12 +123,42 @@ const shuffled = <T, >(arr: T[]): T[] => {
 
 const refreshOfferedSkins = () => {
   const skinStages = stageCards.value.filter(c => c.isSkin && !c.claimed).map(c => c.stage)
-  const pool = shuffled(unownedSkinModelIds())
+  const persisted = persistedOffers.value
   const result: Record<number, SpinnerModelId | null> = {}
-  skinStages.forEach((stage, idx) => {
-    result[stage] = pool[idx] ?? null
-  })
+  const taken = new Set<SpinnerModelId>()
+
+  // Keep existing offers that are still unowned
+  for (const stage of skinStages) {
+    const prev = persisted[stage]
+    if (prev) {
+      const stillUnowned = (Object.keys(SKINS_PER_TOP) as TopPartId[]).some(
+        top => SKINS_PER_TOP[top].includes(prev) && !isSkinOwned(top, prev)
+      )
+      if (stillUnowned) {
+        result[stage] = prev
+        taken.add(prev)
+      }
+    }
+  }
+
+  // Fill stages that need a new skin
+  const pool = shuffled(unownedSkinModelIds().filter(m => !taken.has(m)))
+  let poolIdx = 0
+  for (const stage of skinStages) {
+    if (result[stage]) continue
+    if (poolIdx < pool.length) {
+      result[stage] = pool[poolIdx]!
+      poolIdx++
+    }
+  }
+
   offeredSkins.value = result
+  // Persist valid offers (strip nulls)
+  const toSave: Record<number, SpinnerModelId> = {}
+  for (const [k, v] of Object.entries(result)) {
+    if (v) toSave[Number(k)] = v
+  }
+  saveOfferedSkins(toSave)
 }
 
 // ─── Auto-scroll to the in-progress stage when the modal opens ─────────────
@@ -132,7 +167,14 @@ const stripRef = ref<HTMLElement | null>(null)
 
 const scrollToCurrentStage = () => {
   if (!stripRef.value) return
-  const target = inProgressStage.value > 0 ? inProgressStage.value : BP_TOTAL_STAGES
+  // Scroll to earliest unclaimed-but-unlocked stage so the player sees
+  // pending rewards first; fall back to in-progress or final stage.
+  const firstUnclaimed = stageCards.value.find(c => c.unlocked && !c.claimed)
+  const target = firstUnclaimed
+    ? firstUnclaimed.stage
+    : inProgressStage.value > 0
+      ? inProgressStage.value
+      : BP_TOTAL_STAGES
   const el = stripRef.value.querySelector<HTMLElement>(`[data-bp-stage="${target}"]`)
   if (!el) return
   const strip = stripRef.value
@@ -141,11 +183,7 @@ const scrollToCurrentStage = () => {
 }
 
 watch(isModalOpen, (open) => {
-  if (!open) {
-    offeredSkins.value = {}
-    honorOfferedSkins.value = {}
-    return
-  }
+  if (!open) return
   refreshOfferedSkins()
   refreshHonorOfferedSkins()
   nextTick(() => scrollToCurrentStage())
@@ -173,28 +211,74 @@ const honorOfferedSkins = ref<Record<number, SpinnerModelId | null>>({})
 
 const refreshHonorOfferedSkins = () => {
   const stages = honorStageCards.value.filter(c => !c.claimed).map(c => c.stage)
-  const pool = shuffled(unownedSkinModelIds())
+  const persisted = persistedHonorOffers.value
   const result: Record<number, SpinnerModelId | null> = {}
-  stages.forEach((stage, idx) => {
-    result[stage] = pool[idx] ?? null
-  })
+  const taken = new Set<SpinnerModelId>()
+
+  // Keep existing offers that are still unowned
+  for (const stage of stages) {
+    const prev = persisted[stage]
+    if (prev) {
+      const stillUnowned = (Object.keys(SKINS_PER_TOP) as TopPartId[]).some(
+        top => SKINS_PER_TOP[top].includes(prev) && !isSkinOwned(top, prev)
+      )
+      if (stillUnowned) {
+        result[stage] = prev
+        taken.add(prev)
+      }
+    }
+  }
+
+  // Fill stages that need a new skin
+  const pool = shuffled(unownedSkinModelIds().filter(m => !taken.has(m)))
+  let poolIdx = 0
+  for (const stage of stages) {
+    if (result[stage]) continue
+    if (poolIdx < pool.length) {
+      result[stage] = pool[poolIdx]!
+      poolIdx++
+    }
+  }
+
   honorOfferedSkins.value = result
+  // Persist valid offers
+  const toSave: Record<number, SpinnerModelId> = {}
+  for (const [k, v] of Object.entries(result)) {
+    if (v) toSave[Number(k)] = v
+  }
+  saveOfferedHonorSkins(toSave)
 }
 
 // ─── Claim action ──────────────────────────────────────────────────────────
 
-/** Resolve which skin image to show for a BP skin stage. */
+/** Resolve which skin image to show for a BP skin stage.
+ *  Merged into a computed map so Vue tracks both sources reactively. */
+const bpSkinMap = computed<Record<number, SpinnerModelId | null>>(() => {
+  const result: Record<number, SpinnerModelId | null> = {}
+  for (let i = 1; i <= BP_TOTAL_STAGES; i++) {
+    result[i] = claimedSkins.value[i] ?? offeredSkins.value[i] ?? null
+  }
+  return result
+})
 const bpSkinForStage = (stage: number): SpinnerModelId | null =>
-  claimedSkins.value[stage] ?? offeredSkins.value[stage] ?? null
+  bpSkinMap.value[stage] ?? null
 
-/** Resolve which skin image to show for an honor track stage. */
+/** Resolve which skin image to show for an honor track stage.
+ *  Merged into a single computed map so Vue tracks both sources reactively. */
+const honorSkinMap = computed<Record<number, SpinnerModelId | null>>(() => {
+  const result: Record<number, SpinnerModelId | null> = {}
+  for (let i = 1; i <= HONOR_TOTAL_STAGES; i++) {
+    result[i] = claimedHonorSkins.value[i] ?? honorOfferedSkins.value[i] ?? null
+  }
+  return result
+})
 const honorSkinForStage = (stage: number): SpinnerModelId | null =>
-  claimedHonorSkins.value[stage] ?? honorOfferedSkins.value[stage] ?? null
+  honorSkinMap.value[stage] ?? null
 
 const onClaim = (stage: number) => {
   const { playSound } = useSounds()
   playSound('happy')
-  const res = claimStage(stage)
+  const res = claimStage(stage, offeredSkins.value[stage])
   if (res) {
     if (res.coins > 0 && bpBtnRef.value) emit('coins-awarded', bpBtnRef.value)
     refreshOfferedSkins()
@@ -215,6 +299,35 @@ const onClaimHonor = (stage: number) => {
     }
   }
   refreshHonorOfferedSkins()
+// ─── Drag-to-scroll for the BP strip ────────────────────────────────────────
+
+  const isDragging = ref(false)
+  let dragStartX = 0
+  let dragScrollLeft = 0
+  let dragMoved = false
+
+  const onStripPointerDown = (e: PointerEvent) => {
+    const strip = stripRef.value
+    if (!strip) return
+    isDragging.value = true
+    dragMoved = false
+    dragStartX = e.clientX
+    dragScrollLeft = strip.scrollLeft
+    strip.setPointerCapture(e.pointerId)
+  }
+
+  const onStripPointerMove = (e: PointerEvent) => {
+    if (!isDragging.value || !stripRef.value) return
+    const dx = e.clientX - dragStartX
+    if (Math.abs(dx) > 3) dragMoved = true
+    stripRef.value.scrollLeft = dragScrollLeft - dx
+  }
+
+  const onStripPointerUp = (e: PointerEvent) => {
+    if (!isDragging.value) return
+    isDragging.value = false
+    stripRef.value?.releasePointerCapture(e.pointerId)
+  }
 }
 </script>
 
@@ -279,6 +392,11 @@ const onClaimHonor = (stage: number) => {
         div.flex.gap-1.overflow-x-auto.overflow-y-hidden.py-2.px-1.bp-strip(
           ref="stripRef"
           class="sm:gap-2"
+          :class="isDragging ? 'cursor-grabbing' : 'cursor-grab'"
+          @pointerdown="onStripPointerDown"
+          @pointermove="onStripPointerMove"
+          @pointerup="onStripPointerUp"
+          @pointercancel="onStripPointerUp"
         )
           div(
             v-for="card in stageCards"
@@ -431,6 +549,11 @@ const onClaimHonor = (stage: number) => {
                 span.text-purple-300 {{ Math.floor(honorProgressFraction * 100) }}%
               span.text-slate-500(v-else) —
 
+      //- Season reset countdown
+      div.text-center(
+        v-if="daysUntilReset != null"
+        class="text-[10px] sm:text-xs text-amber-400/80 font-bold"
+      ) {{ t('seasonReset', { n: daysUntilReset }) }}
       //- Footer tip
       div.text-center(class="text-[10px] sm:text-xs text-slate-400")
         template(v-if="isMaxed")
@@ -446,6 +569,8 @@ const onClaimHonor = (stage: number) => {
 // scrollable. Matches the visual language of the rest of the HUD.
 .bp-strip
   scrollbar-width: none
+  touch-action: pan-y
+  user-select: none
 
   &::-webkit-scrollbar
     display: none
@@ -469,6 +594,7 @@ en:
   honorTrack: "Honor Track"
   honorAbbr: "HP"
   honorInfo: "Win PvP battles to earn Honor Points (HP). Fair-game (Level 1) wins give 100 HP. 3 wins unlock 1 skin. Beat stronger opponents for bonus HP!"
+  seasonReset: "Season resets in {n} day(s) — collect your rewards!"
 de:
   battlePass: "Battle Pass"
   complete: "ABGESCHLOSSEN"
@@ -479,6 +605,7 @@ de:
   honorTrack: "Ehren-Track"
   honorAbbr: "EP"
   honorInfo: "Gewinne PvP-Kämpfe für Ehrenpunkte (EP). Fairer Kampf (Level 1) gibt 100 EP. 3 Siege schalten 1 Skin frei. Besiege stärkere Gegner für Bonus-EP!"
+  seasonReset: "Saison endet in {n} Tag(en) — hol dir deine Belohnungen!"
 fr:
   battlePass: "Battle Pass"
   complete: "TERMINÉ"
@@ -489,6 +616,7 @@ fr:
   honorTrack: "Piste d'Honneur"
   honorAbbr: "PH"
   honorInfo: "Gagne des combats PvP pour obtenir des Points d'Honneur (PH). Combat équitable (Niveau 1) donne 100 PH. 3 victoires débloquent 1 skin. Bats des adversaires plus forts pour des PH bonus !"
+  seasonReset: "La saison se réinitialise dans {n} jour(s) — récupère tes récompenses !"
 es:
   battlePass: "Pase de Batalla"
   complete: "COMPLETO"
@@ -499,6 +627,7 @@ es:
   honorTrack: "Pista de Honor"
   honorAbbr: "PH"
   honorInfo: "Gana combates PvP para obtener Puntos de Honor (PH). Combate justo (Nivel 1) da 100 PH. 3 victorias desbloquean 1 skin. ¡Vence a rivales más fuertes para PH extra!"
+  seasonReset: "¡La temporada se reinicia en {n} día(s) — reclama tus recompensas!"
 jp:
   battlePass: "バトルパス"
   complete: "完了"
@@ -509,6 +638,7 @@ jp:
   honorTrack: "名誉トラック"
   honorAbbr: "名誉P"
   honorInfo: "PvPバトルに勝利して名誉ポイント(名誉P)を獲得。フェアゲーム（レベル1）勝利で100名誉P。3勝で1スキン解放。強い相手に勝つとボーナス名誉P！"
+  seasonReset: "シーズンリセットまであと{n}日 — 報酬を受け取ろう！"
 kr:
   battlePass: "배틀 패스"
   complete: "완료"
@@ -519,6 +649,7 @@ kr:
   honorTrack: "명예 트랙"
   honorAbbr: "명예P"
   honorInfo: "PvP 전투에서 승리하여 명예 포인트(명예P)를 획득하세요. 공정 게임(레벨 1) 승리 시 100 명예P. 3승으로 스킨 1개 해제. 강한 상대를 이기면 보너스 명예P!"
+  seasonReset: "시즌 리셋까지 {n}일 — 보상을 받으세요!"
 zh:
   battlePass: "战斗通行证"
   complete: "完成"
@@ -529,6 +660,7 @@ zh:
   honorTrack: "荣誉通道"
   honorAbbr: "荣誉点"
   honorInfo: "赢得PvP战斗获得荣誉点数(荣誉点)。公平对战（等级1）胜利获得100荣誉点。3胜解锁1个皮肤。击败更强对手获得额外荣誉点！"
+  seasonReset: "赛季将在{n}天后重置 — 快领取奖励！"
 ru:
   battlePass: "Боевой пропуск"
   complete: "ЗАВЕРШЕНО"
@@ -539,4 +671,5 @@ ru:
   honorTrack: "Путь Чести"
   honorAbbr: "ОЧ"
   honorInfo: "Побеждайте в PvP-боях, чтобы получить Очки Чести (ОЧ). Честный бой (Уровень 1) даёт 100 ОЧ. 3 победы открывают 1 скин. Победа над сильными соперниками даёт бонусные ОЧ!"
+  seasonReset: "Сезон сбросится через {n} дн. — заберите награды!"
 </i18n>

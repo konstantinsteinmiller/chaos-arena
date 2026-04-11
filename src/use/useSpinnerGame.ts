@@ -20,6 +20,7 @@ import { useScreenshake } from '@/use/useScreenshake'
 import useSounds from '@/use/useSound'
 import { prependBaseUrl } from '@/utils/function.ts'
 import { resourceCache } from '@/use/useAssets'
+import { drawLightningBolt } from '@/utils/lightning'
 
 const { triggerShake } = useScreenshake()
 const { playSound } = useSounds()
@@ -40,7 +41,7 @@ const STOP_THRESHOLD = 0.25
 // damage to one roll per contact entry (Option C). Clean head-on slams
 // read very close to the old numbers; sliding/chase "grind" that used
 // to rack up damage now deals near-zero, which is the intended fix.
-const DAMAGE_SCALE = isDebug.value ? 1 : 1.4
+const DAMAGE_SCALE = isDebug.value ? 4 : 1.4
 const HIT_FLASH_FRAMES = 50
 const NPC_THINK_MS = 500
 const BOUNCE_DAMPENING = 0.75
@@ -159,7 +160,7 @@ export const simSpeed: Ref<1 | 2> = ref(1)
 // Counts how many matches the player has started. Every Nth start triggers a
 // "3, 2, 1, GO" countdown rendered inside the meteor shower ring.
 const GAME_START_COUNT_KEY = 'spinner_game_start_count'
-const COUNTDOWN_EVERY_N_GAMES = 5
+const COUNTDOWN_EVERY_N_GAMES = 3
 const COUNTDOWN_STEP_MS = 375
 const COUNTDOWN_SEQUENCE = ['3', '2', '1', 'GO'] as const
 
@@ -593,7 +594,7 @@ export const useSpinnerGame = () => {
     for (const blade of blades) {
       if (blade.hp <= 0) continue
       const spd = speed(blade)
-      if (blade.config.modelId !== 'boulder' || spd < 1.0) continue
+      if ((blade.config.modelId !== 'boulder' && blade.config.modelId !== 'diamond') || spd < 1.0) continue
       groundDecals.push({
         x: blade.x, y: blade.y,
         size: blade.radius * (0.6 + spd * 0.04),
@@ -871,6 +872,8 @@ export const useSpinnerGame = () => {
     } else if (blade.statSwitchPhase === 'defense') {
       def = Math.max(dmg, def)
     }
+    // Diamond skin: hidden 1.2x defense bonus
+    if (blade.config.modelId === 'diamond') def *= 1.2
     // Powerup buffs collected during this match. Each pickup multiplies the
     // matching axis (e.g. two attack pickups stack to 1.25 * 1.25).
     const buffs = blade.buffs
@@ -1226,6 +1229,14 @@ export const useSpinnerGame = () => {
         if (blade.config.bossAbility === 'life-leech') {
           blade.isLifeLeech = true
         }
+      }
+    }
+
+    // Thunder ability: set on any blade with bossAbility 'thunder' (works standalone or mixed with partners)
+    for (const blade of npcBlades.value) {
+      if (blade.config.bossAbility === 'thunder') {
+        blade.isThunder = true
+        blade.thunderLastHit = new Map()
       }
     }
 
@@ -1893,6 +1904,36 @@ export const useSpinnerGame = () => {
       }
     }
 
+    // Thunder boss aura: 1 damage/sec to nearby enemy blades within bolt radius
+    const THUNDER_RADIUS_MUL = 1.8 // matches visual bolt reach
+    const THUNDER_COOLDOWN_MS = 1000
+    const THUNDER_DAMAGE = 1
+    const nowThunder = gameTime()
+    for (const src of all) {
+      if (!src.isThunder || src.hp <= 0) continue
+      if (!src.thunderLastHit) src.thunderLastHit = new Map()
+      const hitRadius = src.radius * THUNDER_RADIUS_MUL
+      for (const target of all) {
+        if (target === src || target.hp <= 0) continue
+        const dx = target.x - src.x
+        const dy = target.y - src.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist > hitRadius + target.radius) continue
+        const lastHit = src.thunderLastHit.get(target.id) ?? -Infinity
+        if (nowThunder - lastHit < THUNDER_COOLDOWN_MS) continue
+        src.thunderLastHit.set(target.id, nowThunder)
+        target.hp = Math.max(0, target.hp - THUNDER_DAMAGE)
+        // Yellow floating damage number
+        const ha = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI / 3)
+        const hs = 0.06 + Math.random() * 0.03
+        damageNumbers.push({
+          x: target.x, y: target.y, value: THUNDER_DAMAGE,
+          vx: Math.cos(ha) * hs, vy: Math.sin(ha) * hs,
+          color: '#ffee44', life: DAMAGE_NUMBER_LIFE, maxLife: DAMAGE_NUMBER_LIFE, isCrit: false
+        })
+      }
+    }
+
     // Powerup spawn timer + lifecycle + collision (no-op when the stage
     // gate or test scene hasn't enabled the system).
     updatePowerups(16)
@@ -2379,34 +2420,71 @@ export const useSpinnerGame = () => {
     // deliberately OUTSIDE this gate — its design intent is constant chip
     // pressure on every contact, throttled by its own per-pair cooldown.
     if (contactArmed) {
+      // ── Compute both sides' damage upfront ────────────────────────
+      let dmgAtoB = 0
+      let dmgBtoA = 0
+      let aCrit = false
+      let bCrit = false
+
       // a attacks b
       if (aSpeed > STOP_THRESHOLD && !aHitInBack) {
-        // Crit only if:
-        //  1) attacker is at least 2x faster than defender (real back-stab,
-        //     not a love-tap from a similarly-fast chaser),
-        //  2) defender hasn't been crit recently — keeps chase-loops from
-        //     chaining crits while the opponent's rear stays exposed.
         const bLastCrit = lastCritAt.get(b.id) ?? -Infinity
-        const isCrit = bHitInBack
+        aCrit = bHitInBack
           && aSpeed >= bSpeed * 2
           && (nowCrit - bLastCrit >= CRIT_COOLDOWN_MS)
-        if (isCrit) {
-          hadCrit = true
-          lastCritAt.set(b.id, nowCrit)
-        }
-        let defMul = isCrit ? 1 : bStats.defenseMultiplier
+        let defMul = aCrit ? 1 : bStats.defenseMultiplier
         if (a.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.5
-        const atkMul = isCrit ? 1.25 : 1
-        // Use the closing normal-speed, not gross aSpeed — a tangential
-        // flyby or a same-heading chase deals near-zero damage now.
-        const dmg = (closingSpeed * aStats.damageMultiplier * atkMul * aStats.totalWeight)
+        const atkMul = aCrit ? 1.25 : 1
+        dmgAtoB = (closingSpeed * aStats.damageMultiplier * atkMul * aStats.totalWeight)
           / (bStats.totalWeight * defMul)
           * DAMAGE_SCALE * bSpeedAdv * aComboMul
           * (friendlyFire ? FRIENDLY_FIRE_MUL : 1)
-        if (applyBladeDamage(b, dmg, cx, cy, a.owner, isCrit)) hadKill = true
+      }
+      // b attacks a
+      if (bSpeed > STOP_THRESHOLD && !bHitInBack) {
+        const aLastCrit = lastCritAt.get(a.id) ?? -Infinity
+        bCrit = aHitInBack
+          && bSpeed >= aSpeed * 2
+          && (nowCrit - aLastCrit >= CRIT_COOLDOWN_MS)
+        let defMul = bCrit ? 1 : aStats.defenseMultiplier
+        if (b.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.5
+        const atkMul = bCrit ? 1.25 : 1
+        dmgBtoA = (closingSpeed * bStats.damageMultiplier * atkMul * bStats.totalWeight)
+          / (aStats.totalWeight * defMul)
+          * DAMAGE_SCALE * aSpeedAdv * bComboMul
+          * (friendlyFire ? FRIENDLY_FIRE_MUL : 1)
+      }
+
+      // ── Anti-draw: if both would die, the stronger attacker survives ──
+      const aWouldDie = dmgBtoA > 0 && a.hp - dmgBtoA <= 0
+      const bWouldDie = dmgAtoB > 0 && b.hp - dmgAtoB <= 0
+      if (aWouldDie && bWouldDie) {
+        // Determine winner: higher damage wins; ties broken by speed, then attack
+        let aWins: boolean
+        if (dmgAtoB !== dmgBtoA) {
+          aWins = dmgAtoB > dmgBtoA
+        } else if (aSpeed !== bSpeed) {
+          aWins = aSpeed > bSpeed
+        } else {
+          aWins = aStats.damageMultiplier >= bStats.damageMultiplier
+        }
+        if (aWins) {
+          dmgBtoA = Math.max(0, a.hp - 1)
+        } else {
+          dmgAtoB = Math.max(0, b.hp - 1)
+        }
+      }
+
+      // ── Apply damage a→b ──────────────────────────────────────────
+      if (dmgAtoB > 0) {
+        if (aCrit) {
+          hadCrit = true
+          lastCritAt.set(b.id, nowCrit)
+        }
+        if (applyBladeDamage(b, dmgAtoB, cx, cy, a.owner, aCrit)) hadKill = true
         // Life-leech: attacker heals 30% of damage dealt
-        if (a.isLifeLeech && dmg > 0) {
-          const heal = dmg * 0.3
+        if (a.isLifeLeech) {
+          const heal = dmgAtoB * 0.3
           a.hp = Math.min(a.maxHp, a.hp + heal)
           if (Math.round(heal) > 0) {
             const ha = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI / 3)
@@ -2419,30 +2497,16 @@ export const useSpinnerGame = () => {
           }
         }
       }
-      // b attacks a
-      if (bSpeed > STOP_THRESHOLD && !bHitInBack) {
-        const aLastCrit = lastCritAt.get(a.id) ?? -Infinity
-        const isCrit = aHitInBack
-          && bSpeed >= aSpeed * 2
-          && (nowCrit - aLastCrit >= CRIT_COOLDOWN_MS)
-        if (isCrit) {
+      // ── Apply damage b→a ──────────────────────────────────────────
+      if (dmgBtoA > 0) {
+        if (bCrit) {
           hadCrit = true
           lastCritAt.set(a.id, nowCrit)
         }
-        let defMul = isCrit ? 1 : aStats.defenseMultiplier
-        if (b.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.5
-        const atkMul = isCrit ? 1.25 : 1
-        // Same closing-speed term for B's counter-attack — physically both
-        // sides of a collision feel the same normal-impact velocity; their
-        // output damage still differs via weight ratio, damageMul, and defMul.
-        const dmg = (closingSpeed * bStats.damageMultiplier * atkMul * bStats.totalWeight)
-          / (aStats.totalWeight * defMul)
-          * DAMAGE_SCALE * aSpeedAdv * bComboMul
-          * (friendlyFire ? FRIENDLY_FIRE_MUL : 1)
-        if (applyBladeDamage(a, dmg, cx, cy, b.owner, isCrit)) hadKill = true
+        if (applyBladeDamage(a, dmgBtoA, cx, cy, b.owner, bCrit)) hadKill = true
         // Life-leech: attacker heals 30% of damage dealt
-        if (b.isLifeLeech && dmg > 0) {
-          const heal = dmg * 0.3
+        if (b.isLifeLeech) {
+          const heal = dmgBtoA * 0.3
           b.hp = Math.min(b.maxHp, b.hp + heal)
           if (Math.round(heal) > 0) {
             const ha = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI / 3)
@@ -3456,63 +3520,147 @@ export const useSpinnerGame = () => {
     // ── Tornado skin aura ──────────────────────────────────────────────
     if (mid === 'tornado') {
       const now = performance.now()
+      const R = blade.radius
       ctx.save()
       ctx.translate(blade.x, blade.y)
-      const rings = 4
-      for (let r = 0; r < rings; r++) {
-        const phase = now * 0.004 + r * Math.PI * 0.5
-        const yOff = (r - rings / 2) * blade.radius * 0.35
-        const ringR = blade.radius * (1.1 + r * 0.15)
-        const wobble = Math.sin(phase) * 3
-        ctx.globalAlpha = 0.15 - r * 0.025
-        ctx.strokeStyle = '#aaddff'
-        ctx.lineWidth = 1.5
+
+      // 1. Outer radial glow — swirling color gradient
+      const glowAngle = now * 0.002
+      ctx.save()
+      ctx.globalAlpha = 0.12 + 0.04 * Math.sin(now * 0.003)
+      const grd = ctx.createRadialGradient(0, 0, R * 0.2, 0, 0, R * 2.2)
+      grd.addColorStop(0, 'rgba(180,220,255,0.5)')
+      grd.addColorStop(0.5, 'rgba(120,180,240,0.2)')
+      grd.addColorStop(1, 'rgba(80,140,220,0)')
+      ctx.fillStyle = grd
+      ctx.beginPath()
+      ctx.arc(0, 0, R * 2.2, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+
+      // 2. Spiral wind trails — 3 interleaved arms rotating at different speeds
+      for (let arm = 0; arm < 3; arm++) {
+        const armPhase = glowAngle * (1.8 + arm * 0.3) + arm * (Math.PI * 2 / 3)
+        ctx.save()
+        ctx.globalAlpha = 0.18 - arm * 0.03
+        ctx.strokeStyle = arm === 0 ? '#cceeff' : arm === 1 ? '#99ccee' : '#77aadd'
+        ctx.lineWidth = 2 - arm * 0.3
+        ctx.lineCap = 'round'
         ctx.beginPath()
-        ctx.ellipse(wobble, yOff, ringR, ringR * 0.3, phase * 0.5, 0, Math.PI * 2)
+        const steps = 28
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps
+          const angle = armPhase + t * Math.PI * 2.5
+          const dist = R * (0.4 + t * 1.4)
+          const px = Math.cos(angle) * dist
+          const py = Math.sin(angle) * dist * 0.45  // flatten to elliptical
+          if (s === 0) ctx.moveTo(px, py)
+          else ctx.lineTo(px, py)
+        }
         ctx.stroke()
+        ctx.restore()
       }
-      ctx.globalAlpha = 1
+
+      // 3. Concentric vortex rings — tilted ellipses narrowing toward center
+      const rings = 6
+      for (let r = 0; r < rings; r++) {
+        const phase = now * 0.005 + r * Math.PI * 0.33
+        const layerT = r / (rings - 1)
+        const ringR = R * (0.6 + layerT * 1.3)
+        const flatten = 0.2 + layerT * 0.15
+        const wobX = Math.sin(phase * 1.3) * 2
+        const wobY = Math.cos(phase * 0.7) * 1.5
+        ctx.save()
+        ctx.globalAlpha = 0.13 - layerT * 0.04
+        ctx.strokeStyle = `hsl(${200 + layerT * 20}, 70%, ${75 + layerT * 10}%)`
+        ctx.lineWidth = 1.8 - layerT * 0.5
+        ctx.beginPath()
+        ctx.ellipse(wobX, wobY, ringR, ringR * flatten, phase * 0.4, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.restore()
+      }
+
+      // 4. Debris particles — small dots orbiting at various speeds/radii
+      const debrisCount = 10
+      for (let d = 0; d < debrisCount; d++) {
+        // Deterministic per-particle seed so each has a stable orbit
+        const seed = d * 137.508 // golden angle
+        const orbitSpeed = 0.003 + (d % 3) * 0.0015
+        const orbitR = R * (0.7 + (d % 5) * 0.3)
+        const angle = now * orbitSpeed + seed
+        const px = Math.cos(angle) * orbitR
+        const py = Math.sin(angle) * orbitR * (0.3 + (d % 4) * 0.1)
+        const size = 1 + (d % 3) * 0.7
+        ctx.save()
+        ctx.globalAlpha = 0.3 + 0.2 * Math.sin(now * 0.01 + d)
+        ctx.fillStyle = d % 2 === 0 ? '#ddeeff' : '#aaccee'
+        ctx.beginPath()
+        ctx.arc(px, py, size, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+
       ctx.restore()
     }
 
     // ── Thunderstorm skin aura ─────────────────────────────────────────
     if (mid === 'thunderstorm') {
       const now = performance.now()
+      // Refresh bolt geometry every 100ms for crackling effect
+      const boltSeed = Math.floor(now / 100)
+      const boltCount = 5
+      // Ambient electric glow
       ctx.save()
-      ctx.translate(blade.x, blade.y)
-      // Random lightning bolts radiating outward
-      const boltSeed = Math.floor(now / 120)
-      const boltCount = 3
-      for (let i = 0; i < boltCount; i++) {
-        // Deterministic-ish angle from seed
-        const angle = ((boltSeed * 7 + i * 137) % 360) * Math.PI / 180
-        const len = blade.radius * (1.2 + ((boltSeed * 3 + i * 41) % 100) * 0.008)
-        const midLen = len * 0.5
-        const jitter = ((boltSeed * 11 + i * 53) % 100 - 50) * 0.06
-        const mx = Math.cos(angle + jitter) * midLen
-        const my = Math.sin(angle + jitter) * midLen
-        const ex = Math.cos(angle) * len
-        const ey = Math.sin(angle) * len
-        ctx.globalAlpha = 0.7
-        ctx.strokeStyle = '#ffee44'
-        ctx.lineWidth = 1.2
-        ctx.beginPath()
-        ctx.moveTo(0, 0)
-        ctx.lineTo(mx, my)
-        ctx.lineTo(ex, ey)
-        ctx.stroke()
-        // Glow
-        ctx.globalAlpha = 0.25
-        ctx.strokeStyle = '#aaccff'
-        ctx.lineWidth = 3
-        ctx.beginPath()
-        ctx.moveTo(0, 0)
-        ctx.lineTo(mx, my)
-        ctx.lineTo(ex, ey)
-        ctx.stroke()
-      }
-      ctx.globalAlpha = 1
+      ctx.globalAlpha = 0.15 + 0.1 * Math.sin(now * 0.008)
+      const glow = ctx.createRadialGradient(blade.x, blade.y, blade.radius * 0.3, blade.x, blade.y, blade.radius * 2)
+      glow.addColorStop(0, 'rgba(150,200,255,0.4)')
+      glow.addColorStop(1, 'rgba(100,150,255,0)')
+      ctx.fillStyle = glow
+      ctx.beginPath()
+      ctx.arc(blade.x, blade.y, blade.radius * 2, 0, Math.PI * 2)
+      ctx.fill()
       ctx.restore()
+      // 5 big branching lightning bolts, ~72° apart with slight jitter
+      for (let i = 0; i < boltCount; i++) {
+        const baseAngle = (i / boltCount) * Math.PI * 2
+        const jitterAngle = ((boltSeed * 7 + i * 41) % 30 - 15) * Math.PI / 180
+        const angle = baseAngle + jitterAngle
+        const len = blade.radius * (1.4 + ((boltSeed * 3 + i * 41) % 100) * 0.012)
+        const ex = blade.x + Math.cos(angle) * len
+        const ey = blade.y + Math.sin(angle) * len
+        drawLightningBolt(ctx, blade.x, blade.y, ex, ey, {
+          jitter: 5,
+          segments: 6,
+          branchChance: 0.4,
+          branchLength: 0.45,
+          maxDepth: 2,
+          color: '#ffee66',
+          glowColor: '#88bbff',
+          lineWidth: 1.5,
+          glowWidth: 4,
+          alpha: 0.85
+        })
+      }
+      // 5 smaller arcs filling the gaps between big bolts
+      const smallSeed = Math.floor(now / 130)
+      for (let i = 0; i < 5; i++) {
+        const angle = ((smallSeed * 11 + i * 73 + 34) % 360) * Math.PI / 180
+        const len = blade.radius * (0.85 + ((smallSeed * 5 + i * 29) % 100) * 0.005)
+        const ex = blade.x + Math.cos(angle) * len
+        const ey = blade.y + Math.sin(angle) * len
+        drawLightningBolt(ctx, blade.x, blade.y, ex, ey, {
+          jitter: 3,
+          segments: 4,
+          branchChance: 0.25,
+          branchLength: 0.3,
+          maxDepth: 1,
+          color: '#ffee66',
+          glowColor: '#88bbff',
+          lineWidth: 0.8,
+          glowWidth: 2.5,
+          alpha: 0.55
+        })
+      }
     }
 
     // ── Stat-switch boss phase indicator ───────────────────────────────

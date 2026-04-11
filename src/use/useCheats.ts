@@ -11,6 +11,9 @@ import useSpinnerConfig from '@/use/useSpinnerConfig.ts'
 const storedCheat = localStorage.getItem('cheat') || 'false'
 const isCheat = ref<boolean>(JSON.parse(storedCheat))
 
+/** Incremented by cheat shortcut — SpinnerArena watches this to open roulette. */
+export const cheatRouletteSignal = ref(0)
+
 
 const useCheats = () => {
   if (!isCheat.value) return {}
@@ -140,8 +143,13 @@ const useCheats = () => {
     'ctrl+shift+alt+z': () => spawnCheatBoss('child-emitter'),
     'ctrl+shift+alt+x': () => spawnCheatBoss('stat-switch'),
     'ctrl+shift+alt+v': () => spawnCheatBoss('life-leech'),
+    'ctrl+shift+alt+n': () => spawnCheatBoss('thunder'),
     'ctrl+shift+alt+k': () => addCoins(3000),
-    'ctrl+shift+alt+c': clearCheatStage
+    'ctrl+shift+alt+c': clearCheatStage,
+    'ctrl+shift+alt+p': () => {
+      cheatRouletteSignal.value++
+      console.warn('[CHEAT] Roulette triggered.')
+    }
   }
 
   /**

@@ -8,7 +8,7 @@ import FReward from '@/components/atoms/FReward.vue'
 import SpinnerConfigModal from '@/components/organisms/SpinnerConfigModal.vue'
 import OptionsModal from '@/components/organisms/OptionsModal.vue'
 import useSounds, { useMusic } from '@/use/useSound'
-import useSpinnerGame, { BLADE_RADIUS, simSpeed, countdownText } from '@/use/useSpinnerGame'
+import useSpinnerGame, { ARENA_RADIUS, BLADE_RADIUS, simSpeed, countdownText } from '@/use/useSpinnerGame'
 import useSpinnerConfig from '@/use/useSpinnerConfig'
 import useSpinnerCampaign from '@/use/useSpinnerCampaign'
 import { useHint } from '@/use/useHint'
@@ -39,10 +39,13 @@ import usePvpStats, { calcHonorPoints } from '@/use/usePvpStats'
 import useLeaderboard, { type LeaderboardEntry } from '@/use/useLeaderboard'
 import { isSdkActive, startGameplay, stopGameplay, showRewardedAd, showMidgameAd } from '@/use/useCrazyGames'
 import useBottomSafe from '@/use/useBottomSafe'
-import { getSelectedSkin } from '@/use/useModels'
+import { getSelectedSkin, modelImgPath } from '@/use/useModels'
 import { isCrazyGamesFullRelease } from '@/use/useMatch.ts'
 import { spawnCoinExplosion } from '@/use/useCoinExplosion'
 import useCheats from '@/use/useCheats'
+import { cheatRouletteSignal } from '@/use/useCheats'
+import RouletteWheel from '@/components/organisms/RouletteWheel.vue'
+import type { RouletteResult } from '@/components/organisms/RouletteWheel.vue'
 
 useCheats()
 
@@ -247,6 +250,14 @@ watch(stageReinitSignal, () => {
 const isGameOver = computed(() => phase.value === 'game_over')
 const showReward: Ref<boolean> = ref(false)
 
+// ─── Boss Roulette ──────────────────────────────────────────────────────────
+const showRoulette = ref(false)
+const rouletteMultiplier = ref(1)
+const rouletteSkinResult = ref<RouletteResult | null>(null)
+const pendingBossReward = ref(false)
+const showRouletteReward = ref(false)
+const rouletteRewardReady = ref(false) // tap-to-continue unlocked
+
 const resultText = computed(() => {
   if (gameResult.value === 'win') return t('spinner.youWin')
   if (gameResult.value === 'lose') return t('spinner.youLose')
@@ -399,6 +410,7 @@ const triggerSpeedBoostAd = async () => {
 const coinBadgeRef = ref<{ rootEl: HTMLElement | null } | null>(null)
 const coinBadgeEl = computed(() => coinBadgeRef.value?.rootEl ?? null)
 const rewardCoinRef = ref<HTMLElement | null>(null)
+const rouletteRewardCoinRef = ref<HTMLElement | null>(null)
 
 /** Fire coin explosion from any source element toward the HUD coin badge. */
 const fireCoinExplosion = (sourceEl: HTMLElement | null) => {
@@ -455,6 +467,9 @@ const getGameCoords = (e: PointerEvent) => {
 const onPointerDown = (e: PointerEvent) => {
   clearHint()
   if (phase.value === 'tap_to_start') {
+    // Ignore taps outside the arena circle
+    const c = getGameCoords(e)
+    if (Math.sqrt(c.x * c.x + c.y * c.y) > ARENA_RADIUS) return
     beginBattle()
     return
   }
@@ -542,6 +557,22 @@ watch(isGameOver, (over) => {
       return
     }
 
+    // Boss win (campaign only) — show roulette before awarding coins
+    const isBossWin = gameResult.value === 'win' && !ghostMode.value && currentStage.value.isBoss
+    if (isBossWin) {
+      // Advance stage + BP immediately, but defer coin award until roulette resolves
+      if (!hasFirstWin.value) markFirstWin()
+      advanceStage()
+      recordPlayerStage(currentStageId.value)
+      bpAwardCampaignWin()
+      pendingBossReward.value = true
+      rouletteMultiplier.value = 1
+      rouletteSkinResult.value = null
+      showRoulette.value = true
+      stopBattleMusic()
+      return
+    }
+
     addCoins(rewardAmount.value)
     if (gameResult.value === 'win' && !ghostMode.value) {
       if (!hasFirstWin.value) markFirstWin()
@@ -559,6 +590,57 @@ watch(isGameOver, (over) => {
     showReward.value = true
     stopBattleMusic()
   }
+})
+
+const onRouletteResult = (result: RouletteResult) => {
+  if (result.type === 'multiplier') {
+    rouletteMultiplier.value = result.multiplier ?? 1
+    rouletteSkinResult.value = null
+  } else {
+    rouletteSkinResult.value = result
+    rouletteMultiplier.value = 1
+  }
+  showRoulette.value = false
+  // Award coins — boss win uses multiplied reward, cheat uses base reward
+  const coins = Math.round(rewardAmount.value * rouletteMultiplier.value)
+  addCoins(coins)
+  coinsAwarded.value = true
+  pendingBossReward.value = false
+  // Show celebration overlay with VFX
+  rouletteRewardReady.value = false
+  showRouletteReward.value = true
+  playSound('happy')
+  spawnMeteorShower(60, 40, 50) // warm star burst
+  // Fire coin explosion from the reward label once the overlay renders
+  nextTick(() => {
+    fireCoinExplosion(rouletteRewardCoinRef.value)
+  })
+  // Enable "tap to continue" after VFX settles
+  setTimeout(() => {
+    rouletteRewardReady.value = true
+  }, 1500)
+}
+
+const onRouletteRewardContinue = async () => {
+  if (!rouletteRewardReady.value) return
+  showRouletteReward.value = false
+
+  // Same reset flow as onRewardContinue — ad cadence, teardown, reinit
+  incrementAdCounter()
+  if (isCrazyGamesFullRelease && isSdkActive.value && battlesSinceAd.value >= 3) {
+    resetAdCounter()
+    await showMidgameAd()
+  }
+  coinsAwarded.value = false
+  initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
+}
+
+// Cheat: trigger roulette on demand (same flow as boss win)
+watch(cheatRouletteSignal, () => {
+  rouletteMultiplier.value = 1
+  rouletteSkinResult.value = null
+  pendingBossReward.value = false // no coins in cheat mode
+  showRoulette.value = true
 })
 
 // Coin explosion VFX when the reward overlay appears
@@ -1045,6 +1127,47 @@ onUnmounted(() => {
             IconCoin(class="w-8 h-8 text-yellow-300")
             span.text-yellow-400.font-black.game-text(class="text-2xl sm:text-4xl") +{{ rewardAmount }}
 
+    //- Boss Roulette Overlay (wheel spinning)
+    FReward(
+      v-model="showRoulette"
+      :show-continue="false"
+    )
+      template(#ribbon)
+        span.text-white.font-black.uppercase.italic.game-text(class="sm:text-2xl") {{ t('spinner.rewards') }}
+      div.flex.flex-col.items-center.gap-4
+        div.font-black.uppercase.tracking-wider.game-text.text-green-400(
+          class="text-3xl sm:text-5xl"
+        ) {{ resultText }}
+        RouletteWheel(@result="onRouletteResult")
+
+    //- Roulette Reward Celebration
+    FReward(
+      v-model="showRouletteReward"
+      :show-continue="rouletteRewardReady"
+      @continue="onRouletteRewardContinue"
+    )
+      template(#ribbon)
+        span.text-white.font-black.uppercase.italic.game-text(class="sm:text-2xl") {{ t('spinner.rewards') }}
+      div.flex.flex-col.items-center.gap-6.roulette-reward-enter
+        //- Skin reward
+        template(v-if="rouletteSkinResult?.skin")
+          div.roulette-reward-glow.flex.flex-col.items-center.gap-3
+            img.object-contain.drop-shadow-lg(
+              :src="modelImgPath(rouletteSkinResult.skin.modelId)"
+              class="w-24 h-24 sm:w-32 sm:h-32"
+            )
+            span.text-purple-300.font-black.game-text.uppercase(class="text-xl sm:text-3xl") {{ t(`skins.${rouletteSkinResult.skin.modelId}`) }}
+          div.flex.items-center.gap-3(ref="rouletteRewardCoinRef")
+            IconCoin(class="w-6 h-6 text-yellow-300")
+            span.text-yellow-400.font-black.game-text(class="text-xl sm:text-2xl") +{{ rewardAmount }}
+        //- Coin multiplier reward
+        template(v-else)
+          div.roulette-reward-glow.flex.flex-col.items-center.gap-2
+            span.text-yellow-300.font-black.game-text(class="text-5xl sm:text-7xl") {{ rouletteMultiplier }}x
+          div.flex.items-center.gap-3(ref="rouletteRewardCoinRef")
+            IconCoin(class="w-8 h-8 text-yellow-300")
+            span.text-yellow-400.font-black.game-text(class="text-3xl sm:text-5xl") +{{ Math.round(rewardAmount * rouletteMultiplier) }}
+
     //- Options Modal
     OptionsModal(
       :is-open="showOptions"
@@ -1094,6 +1217,28 @@ onUnmounted(() => {
 
 .fade-enter-from, .fade-leave-to
   opacity: 0
+
+// ── Roulette Reward Celebration ─────────────────────────────────────────
+.roulette-reward-enter
+  animation: roulette-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)
+
+.roulette-reward-glow
+  animation: roulette-glow 2s ease-in-out infinite
+  filter: drop-shadow(0 0 16px rgba(255, 200, 50, 0.6))
+
+@keyframes roulette-pop
+  0%
+    opacity: 0
+    transform: scale(0.3)
+  100%
+    opacity: 1
+    transform: scale(1)
+
+@keyframes roulette-glow
+  0%, 100%
+    filter: drop-shadow(0 0 16px rgba(255, 200, 50, 0.6))
+  50%
+    filter: drop-shadow(0 0 32px rgba(255, 180, 50, 0.9))
 
 .speedup-switch
   :deep(.button-wrap:last-of-type button)

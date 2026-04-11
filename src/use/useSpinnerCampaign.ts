@@ -138,12 +138,12 @@ const BASE_STAGES: Stage[] = [
   ], 200, 60, { arenaType: 'forest' }),
   // 10 — SPLIT boss (archetype 2)
   s(10, 'stage_10', [
-    e('round', 'tanky', 3, 3, 'bear', 'split')
+    e('round', 'tanky', 3, 2, 'bear', 'split')
   ], 350, 90, { isBoss: true }),
   s(11, 'stage_11', [
-    e('triangle', 'speedy', 3, 3, 'salamaner'),
+    e('triangle', 'speedy', 3, 3, 'thunderstorm', 'thunder'),
     e('cushioned', 'tanky', 3, 3, 'shell')
-  ], 200, 65),
+  ], 200, 65, { arenaType: 'shock' }),
   s(12, 'stage_12', [
     e('star', 'speedy', 4, 3, 'axe'),
     e('round', 'tanky', 3, 4, 'turtle'),
@@ -182,9 +182,9 @@ const BASE_STAGES: Stage[] = [
   ], 280, 85, { arenaType: 'thunder' }),
   // 20 — PARTNERS boss (archetype 4)
   s(20, 'stage_20', [
-    e('cushioned', 'tanky', 5, 5, 'castle', 'partners'),
-    e('round', 'tanky', 5, 5, 'piranha', 'partners'),
-    e('quadratic', 'balanced', 5, 5, 'mysticaleye', 'partners')
+    e('cushioned', 'tanky', 5, 3, 'castle', 'partners'),
+    e('round', 'tanky', 4, 3, 'piranha', 'partners'),
+    e('quadratic', 'balanced', 5, 3, 'mysticaleye', 'partners')
   ], 500, 130, { isBoss: true }),
 
   // ── Mid Game (21-50) ──────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ const BASE_STAGES: Stage[] = [
   ], 340, 100, { bouncers: 1 }),
   // 25 — HEALERS boss (archetype 5)
   s(25, 'stage_25', [
-    e('cushioned', 'balanced', 7, 7, 'mountain', 'healers'),
+    e('cushioned', 'speedy', 7, 6, 'mountain', 'healers'),
     e('round', 'balanced', 7, 7, 'piranha', 'healers'),
     e('quadratic', 'balanced', 7, 7, 'mysticaleye', 'healers')
   ], 560, 140, { isBoss: true }),
@@ -232,7 +232,7 @@ const BASE_STAGES: Stage[] = [
   ], 420, 120),
   // 30 — LIFE-LEECH boss
   s(30, 'stage_30', [
-    e('triangle', 'speedy', 25, 25, 'life-leech', 'life-leech')
+    e('triangle', 'speedy', 19, 21, 'life-leech', 'life-leech')
   ], 800, 200, { isBoss: true }),
   s(31, 'stage_31', [
     e('triangle', 'speedy', 12, 9, 'phoenix'),
@@ -254,7 +254,7 @@ const BASE_STAGES: Stage[] = [
   ], 440, 130),
   // 35 — SPLIT boss
   s(35, 'stage_35', [
-    e('round', 'tanky', 16, 14, 'piranha', 'split')
+    e('triangle', 'tanky', 15, 10, 'piranha', 'split')
   ], 900, 210, { isBoss: true }),
   s(36, 'stage_36', [
     e('star', 'speedy', 11, 10, 'tornado'),
@@ -298,9 +298,9 @@ const BASE_STAGES: Stage[] = [
   ], 550, 165, { arenaType: 'forest' }),
   // 45 — PARTNERS boss
   s(45, 'stage_45', [
-    e('cushioned', 'tanky', 13, 13, 'castle', 'partners'),
-    e('round', 'tanky', 13, 13, 'turtle', 'partners'),
-    e('star', 'balanced', 13, 13, 'reddragon', 'partners')
+    e('cushioned', 'tanky', 12, 15, 'castle', 'partners'),
+    e('piercer', 'balanced', 13, 11, 'turtle', 'partners'),
+    e('star', 'balanced', 11, 9, 'reddragon', 'partners')
   ], 1100, 250, { isBoss: true }),
   s(46, 'stage_46', [
     e('star', 'speedy', 14, 13, 'tornado'),
@@ -323,9 +323,9 @@ const BASE_STAGES: Stage[] = [
   // 50 — HEALERS boss
   s(50, 'stage_50', [
     e('cushioned', 'balanced', 14, 14, 'mountain', 'healers'),
-    e('round', 'balanced', 14, 14, 'turtle', 'healers'),
-    e('cushioned', 'balanced', 14, 14, 'shell', 'healers'),
-    e('quadratic', 'balanced', 14, 14, 'mysticaleye', 'healers')
+    e('round', 'balanced', 14, 11, 'turtle', 'healers'),
+    e('cushioned', 'speedy', 14, 12, 'shell', 'healers'),
+    e('quadratic', 'speedy', 16, 11, 'mysticaleye', 'healers')
   ], 1300, 280, { isBoss: true }),
 
   // ── Late Game (51-80) ─────────────────────────────────────────────────────
@@ -539,11 +539,12 @@ const BASE_STAGES: Stage[] = [
     e('quadratic', 'balanced', 25, 26, 'mysticaleye'),
     e('round', 'tanky', 25, 25, 'piranha')
   ], 1060, 315, { arenaType: 'forest' }),
-  // 95 — PARTNERS boss
+  // 95 — PARTNERS boss (with thunder partner)
   s(95, 'stage_95', [
     e('cushioned', 'tanky', 28, 28, 'castle', 'partners'),
     e('round', 'tanky', 28, 28, 'piranha', 'partners'),
     e('star', 'balanced', 28, 23, 'reddragon', 'partners'),
+    e('triangle', 'tanky', 27, 27, 'thunder', 'thunder'),
     e('quadratic', 'balanced', 28, 23, 'mysticaleye', 'partners')
   ], 2700, 480, { isBoss: true }),
   s(96, 'stage_96', [
@@ -880,6 +881,12 @@ export const buildCheatBossStage = (ability: BossAbility): Stage => {
       name = 'cheat_life_leech'
       enemyTeam = [
         e('triangle', 'speedy', t('triangle'), b('speedy'), 'snake', 'life-leech')
+      ]
+      break
+    case 'thunder':
+      name = 'cheat_thunder'
+      enemyTeam = [
+        e('triangle', 'tanky', t('triangle'), b('tanky'), 'thunderstorm', 'thunder')
       ]
       break
   }

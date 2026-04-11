@@ -146,13 +146,15 @@ export default {
       teleporter: 'Teleporter',
       wasp: 'Wasp',
       'life-leech': 'Life Leech',
-      dark: 'Dark',
+      dark: 'Hydra',
       'spiky-eagle': 'Spiky Eagle',
       'forest-dragon': 'Forest Dragon',
       chain: 'Chain',
       'wolf-demon': 'Wolf Demon',
       rhino: 'Rhino',
-      'golden-eagle': 'Golden Eagle'
+      'golden-eagle': 'Golden Eagle',
+      diamond: 'Diamond',
+      tsunami: 'Tsunami'
     }
   },
   de: {
@@ -302,13 +304,15 @@ export default {
       teleporter: 'Teleporter',
       wasp: 'Wespe',
       'life-leech': 'Lebensräuber',
-      dark: 'Dunkel',
+      dark: 'Hydra',
       'spiky-eagle': 'Stachelnadler',
       'forest-dragon': 'Walddrache',
       chain: 'Kette',
       'wolf-demon': 'Wolfsdämon',
       rhino: 'Nashorn',
-      'golden-eagle': 'Goldadler'
+      'golden-eagle': 'Goldadler',
+      diamond: 'Diamant',
+      tsunami: 'Tsunami'
     }
   },
   fr: {
@@ -464,7 +468,9 @@ export default {
       chain: 'Chaîne',
       'wolf-demon': 'Loup Démon',
       rhino: 'Rhinocéros',
-      'golden-eagle': 'Aigle Doré'
+      'golden-eagle': 'Aigle Doré',
+      diamond: 'Diamant',
+      tsunami: 'Tsunami'
     }
   },
   es: {
@@ -620,7 +626,9 @@ export default {
       chain: 'Cadena',
       'wolf-demon': 'Lobo Demonio',
       rhino: 'Rinoceronte',
-      'golden-eagle': 'Águila Dorada'
+      'golden-eagle': 'Águila Dorada',
+      diamond: 'Diamante',
+      tsunami: 'Tsunami'
     },
     rule: {
       high: 'Alto',
@@ -788,7 +796,9 @@ export default {
       chain: 'チェーン',
       'wolf-demon': 'ウルフデーモン',
       rhino: 'ライノ',
-      'golden-eagle': 'ゴールデンイーグル'
+      'golden-eagle': 'ゴールデンイーグル',
+      diamond: 'ダイヤモンド',
+      tsunami: '津波'
     }
   },
   kr: {
@@ -944,7 +954,9 @@ export default {
       chain: '체인',
       'wolf-demon': '늑대 악마',
       rhino: '코뿔소',
-      'golden-eagle': '황금 독수리'
+      'golden-eagle': '황금 독수리',
+      diamond: '다이아몬드',
+      tsunami: '쓰나미'
     }
   },
   zh: {
@@ -1100,7 +1112,9 @@ export default {
       chain: '锁链',
       'wolf-demon': '狼魔',
       rhino: '犀牛',
-      'golden-eagle': '金鹰'
+      'golden-eagle': '金鹰',
+      diamond: '钻石',
+      tsunami: '海啸'
     }
   },
   ru: {
@@ -1256,7 +1270,9 @@ export default {
       chain: 'Цепь',
       'wolf-demon': 'Волк-Демон',
       rhino: 'Носорог',
-      'golden-eagle': 'Золотой Орёл'
+      'golden-eagle': 'Золотой Орёл',
+      diamond: 'Алмаз',
+      tsunami: 'Цунами'
     }
   }
 }
