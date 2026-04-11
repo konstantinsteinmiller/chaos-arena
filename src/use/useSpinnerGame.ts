@@ -257,6 +257,16 @@ export const useSpinnerGame = () => {
   let pvpTurnCounter = 0
   let onStateHash: ((hash: string, turn: number) => void) | null = null
 
+  // ── Deterministic PvP Clock ────────────────────────────────────────────
+  // In PvP mode every timing-dependent calculation must use the same clock
+  // on both clients. `pvpTickCount` increments exactly once per fixed-step
+  // physics tick (60 Hz). `gameTime()` returns a virtual wall-clock that
+  // is fully deterministic in PvP, and falls back to `performance.now()`
+  // in single-player so existing behaviour is unchanged.
+  let pvpTickCount = 0
+  const gameTime = (): number =>
+    pvpMode.value ? pvpTickCount * FIXED_STEP_MS : performance.now()
+
   /** Compute a lightweight hash of all gameplay-relevant blade state.
    *  Both clients see the arena mirrored (player↔npc swapped, coordinates
    *  negated). We normalize by using absolute positions and sorting, so
@@ -268,7 +278,7 @@ export const useSpinnerGame = () => {
       const ax = Math.abs(b.x)
       const ay = Math.abs(b.y)
       entries.push(
-        `${ax.toFixed(1)},${ay.toFixed(1)},${b.hp.toFixed(1)}`
+        `${ax.toFixed(2)},${ay.toFixed(2)},${b.hp.toFixed(2)}`
       )
     }
     entries.sort()
@@ -706,7 +716,7 @@ export const useSpinnerGame = () => {
     blades.filter(b => b.hp > 0)
 
   const isInvulnerable = (blade: SpinnerState): boolean =>
-    blade.invulnerableUntil !== undefined && performance.now() < blade.invulnerableUntil
+    blade.invulnerableUntil !== undefined && gameTime() < blade.invulnerableUntil
 
   let firstGameBoost = false
 
@@ -835,10 +845,12 @@ export const useSpinnerGame = () => {
    * and they inherit the parent's group so their swarm never self-damages.
    */
   const spawnSplitChildren = (parent: SpinnerState) => {
-    const now = performance.now()
+    const now = gameTime()
     const children: SpinnerState[] = []
     for (let i = 0; i < SPLIT_CHILD_COUNT; i++) {
-      const angle = (i / SPLIT_CHILD_COUNT) * Math.PI * 2 + Math.random() * 0.25
+      // In PvP use a fixed offset so both clients agree on child positions
+      const jitter = pvpMode.value ? 0.125 : Math.random() * 0.25
+      const angle = (i / SPLIT_CHILD_COUNT) * Math.PI * 2 + jitter
       const dx = Math.cos(angle)
       const dy = Math.sin(angle)
       // Place outside parent's body so they don't trivially collide on frame 1.
@@ -926,6 +938,7 @@ export const useSpinnerGame = () => {
   ) => {
     pvpMode.value = !!pvp?.enabled
     BLADE_RADIUS = pvpMode.value ? PVP_BLADE_RADIUS : DEFAULT_BLADE_RADIUS
+    pvpTickCount = 0
     firstGameBoost = boost
     stopPhysics()
     nextBladeId = 0
@@ -1574,6 +1587,7 @@ export const useSpinnerGame = () => {
   // ─── Physics ─────────────────────────────────────────────────────────────
 
   const updatePhysics = () => {
+    if (pvpMode.value) pvpTickCount++
     // Meteor shower phase
     if (phase.value === 'meteor_intro') {
       updateMeteorParticles()
@@ -1618,7 +1632,7 @@ export const useSpinnerGame = () => {
         if (blade.accelFramesLeft === 0) {
           blade.ax = 0
           blade.ay = 0
-          blade.lastHitTime = performance.now()
+          blade.lastHitTime = gameTime()
         }
       }
 
@@ -1645,7 +1659,7 @@ export const useSpinnerGame = () => {
 
         // Exponential slowdown the longer a blade travels without hitting another blade
         if (blade.lastHitTime > 0) {
-          const elapsed = performance.now() - blade.lastHitTime
+          const elapsed = gameTime() - blade.lastHitTime
           // After ~1s no-hit, start applying extra drag that ramps up exponentially
           const NO_HIT_GRACE_MS = 1000
           if (elapsed > NO_HIT_GRACE_MS) {
@@ -1964,7 +1978,7 @@ export const useSpinnerGame = () => {
     // phasing through one another. Split siblings are handled via the
     // friendlyFire path above and skip this early-return entirely.
     if (!friendlyFire && a.groupId !== undefined && a.groupId === b.groupId) {
-      const now_ally = performance.now()
+      const now_ally = gameTime()
       const bounceAllies = !!(a.bouncesAllies && b.bouncesAllies)
       if (a.healsAllies || b.healsAllies) {
         const key = a.id < b.id ? `${a.id}_${b.id}` : `${b.id}_${a.id}`
@@ -2015,7 +2029,7 @@ export const useSpinnerGame = () => {
     }
 
     // Reset no-hit timer on collision
-    const now_hit = performance.now()
+    const now_hit = gameTime()
     a.lastHitTime = now_hit
     b.lastHitTime = now_hit
 
@@ -2115,9 +2129,9 @@ export const useSpinnerGame = () => {
     let aComboMul = 1
     let bComboMul = 1
     if (arenaType.value === 'thunder') {
-      const comboAngle = (Math.random() - 0.5) * (Math.PI / 3) // 60° cone pointing right
+      const comboAngle = (Math.random() - 0.5) * (Math.PI / 3) // 60° cone pointing right (VFX only)
       const comboSpd = 0.06 + Math.random() * 0.03
-      const now = performance.now()
+      const now = gameTime()
       // Update combo for a hitting b (only if a is moving fast enough to attack)
       if (aSpeed > STOP_THRESHOLD) {
         const aCombo = comboState.get(a.id)
@@ -2164,7 +2178,7 @@ export const useSpinnerGame = () => {
       }
     }
 
-    const nowCrit = performance.now()
+    const nowCrit = gameTime()
 
     // Gate the entire speed-based damage block on the contact-armed check:
     // a pair that stays in contact over multiple physics ticks only gets
@@ -2229,7 +2243,7 @@ export const useSpinnerGame = () => {
     // rear-ended.
     {
       const spikyKey = a.id < b.id ? `${a.id}_${b.id}` : `${b.id}_${a.id}`
-      const nowChip = performance.now()
+      const nowChip = gameTime()
       const lastChip = spikyChipCooldowns.get(spikyKey) ?? 0
       if (nowChip - lastChip >= SPIKY_CHIP_COOLDOWN_MS) {
         let chipped = false

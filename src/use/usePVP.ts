@@ -21,19 +21,63 @@ export const isPvpEnabled = import.meta.env.VITE_APP_PVP_ENABLED === 'true'
 // Can be copied to clipboard from the UI for remote debugging.
 
 const debugLog: string[] = []
-const MAX_DEBUG_ENTRIES = 100
+const consoleCapture: string[] = []
+const MAX_DEBUG_ENTRIES = 150
+const MAX_CONSOLE_ENTRIES = 80
+
+// Intercept console.warn / console.error to capture browser-level issues
+// (WebRTC errors, TURN failures, etc.) into the debug clipboard.
+const _origWarn = console.warn
+const _origError = console.error
+console.warn = (...args: any[]) => {
+  _origWarn.apply(console, args)
+  const msg = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')
+  consoleCapture.push(`[WARN] ${msg}`)
+  if (consoleCapture.length > MAX_CONSOLE_ENTRIES) consoleCapture.shift()
+}
+console.error = (...args: any[]) => {
+  _origError.apply(console, args)
+  const msg = args.map(a => {
+    if (a instanceof Error) return `${a.name}: ${a.message}\n${a.stack ?? ''}`
+    return typeof a === 'string' ? a : JSON.stringify(a)
+  }).join(' ')
+  consoleCapture.push(`[ERR] ${msg}`)
+  if (consoleCapture.length > MAX_CONSOLE_ENTRIES) consoleCapture.shift()
+}
 
 const pvpLog = (msg: string) => {
   const ts = new Date().toISOString().slice(11, 23) // HH:mm:ss.SSS
   const entry = `[${ts}] ${msg}`
   debugLog.push(entry)
   if (debugLog.length > MAX_DEBUG_ENTRIES) debugLog.shift()
-  console.log('[PvP]', entry)
+  _origWarn.call(console, '[PvP]', entry)
 }
+
+/** Check whether any relay (TURN) candidates were gathered. */
+const hadRelayCandidates = (): boolean =>
+  debugLog.some(e => e.includes('ICE candidate: relay'))
 
 export const debugCopied: Ref<boolean> = ref(false)
 
 export const copyPvpDebugLog = async (): Promise<boolean> => {
+  // Snapshot current RTCPeerConnection stats if available
+  let pcStats = 'n/a'
+  try {
+    const pc: RTCPeerConnection | undefined =
+      (conn as any)?.peerConnection ?? (conn as any)?._peerConnection
+    if (pc) {
+      pcStats = [
+        `iceState=${pc.iceConnectionState}`,
+        `iceGathering=${pc.iceGatheringState}`,
+        `signaling=${pc.signalingState}`,
+        `connState=${pc.connectionState}`,
+        `localCandidates=${pc.localDescription?.sdp?.match(/a=candidate/g)?.length ?? 0}`,
+        `remoteCandidates=${pc.remoteDescription?.sdp?.match(/a=candidate/g)?.length ?? 0}`
+      ].join(' | ')
+    }
+  } catch { /* ignore */
+  }
+
   const info = [
     `── PvP Debug Log ──`,
     `UA: ${navigator.userAgent}`,
@@ -41,11 +85,15 @@ export const copyPvpDebugLog = async (): Promise<boolean> => {
     `Time: ${new Date().toISOString()}`,
     `Status: ${status.value} | Role: ${role.value} | PeerId: ${peerId.value}`,
     `RemotePeerId: ${remotePeerId.value}`,
-    `PeerOpen: ${peer?.open ?? 'no peer'} | PeerDestroyed: ${peer?.destroyed ?? 'no peer'}`,
+    `PeerOpen: ${peer?.open ?? 'no peer'} | PeerDestroyed: ${peer?.destroyed ?? 'no peer'} | PeerDisconnected: ${peer?.disconnected ?? 'n/a'}`,
     `ConnOpen: ${conn?.open ?? 'no conn'} | ConnType: ${conn?.type ?? 'n/a'}`,
+    `RTCPeerConnection: ${pcStats}`,
+    `TURN relay candidates: ${hadRelayCandidates() ? 'YES' : 'NONE ⚠️ (all TURN servers may be unreachable)'}`,
     `Error: ${errorMessage.value || 'none'}`,
-    `──────────────────`,
-    ...debugLog
+    `──────────────────── PvP Events ────────────────────`,
+    ...debugLog,
+    `──────────────────── Console (warn/error) ──────────`,
+    ...(consoleCapture.length > 0 ? consoleCapture : ['(none)'])
   ].join('\n')
   try {
     await navigator.clipboard.writeText(info)
@@ -89,6 +137,7 @@ export type PvPMessage =
   | { type: 'launch'; bladeIndex: number; ax: number; ay: number }
   | { type: 'surrender' }
   | { type: 'state-check'; hash: string; turn: number }
+  | { type: 'return-to-lobby' }
   | { type: 'ping' }
   | { type: 'pong' }
 
@@ -100,26 +149,23 @@ const PONG_TIMEOUT_MS = 10000
 const CONN_OPEN_TIMEOUT_MS = 15000       // Give up if conn never opens
 const PEER_ID_PREFIX = 'ca-'
 
-// ICE servers: STUN for direct connections + free TURN relays for
+// ICE servers: STUN for direct connections + metered.ca TURN relay for
 // carrier-grade NAT (mobile networks) where STUN alone fails.
+// TURN credentials come from env vars (free metered.ca account).
+const TURN_USER = import.meta.env.VITE_APP_TURN_USERNAME as string | undefined
+const TURN_CRED = import.meta.env.VITE_APP_TURN_CREDENTIAL as string | undefined
+
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  {
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelayproject',
-    credential: 'openrelayproject'
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject'
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelayproject',
-    credential: 'openrelayproject'
-  }
+  { urls: 'stun:stun.relay.metered.ca:80' },
+  // TURN relay — only included when credentials are configured
+  ...(TURN_USER && TURN_CRED ? [
+    { urls: 'turn:global.relay.metered.ca:80', username: TURN_USER, credential: TURN_CRED },
+    { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: TURN_USER, credential: TURN_CRED },
+    { urls: 'turn:global.relay.metered.ca:443', username: TURN_USER, credential: TURN_CRED },
+    { urls: 'turn:global.relay.metered.ca:443?transport=tcp', username: TURN_USER, credential: TURN_CRED }
+  ] : [])
 ]
 
 // ─── Composable ────────────────────────────────────────────────────────────
@@ -163,6 +209,7 @@ let conn: DataConnection | null = null
 let expiryTimer: ReturnType<typeof setInterval> | null = null
 let expiryTimeout: ReturnType<typeof setTimeout> | null = null
 let connOpenTimeout: ReturnType<typeof setTimeout> | null = null
+let connRetried = false
 let pingInterval: ReturnType<typeof setInterval> | null = null
 let lastPongAt = 0
 
@@ -171,6 +218,17 @@ let onGameStart: ((firstTurn: 'host' | 'guest') => void) | null = null
 let onRemoteLaunch: ((bladeIndex: number, ax: number, ay: number) => void) | null = null
 let onRemoteSurrender: (() => void) | null = null
 let onRemoteStateCheck: ((hash: string, turn: number) => void) | null = null
+let onReturnToLobby: (() => void) | null = null
+
+/** Return both players to lobby without destroying the connection. */
+const goBackToLobby = () => {
+  pvpLog(`goBackToLobby: status=${status.value} role=${role.value}`)
+  status.value = 'lobby'
+  hostReady.value = false
+  guestReady.value = false
+  hostTeam.value = []
+  guestTeam.value = []
+}
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -217,6 +275,7 @@ const cleanup = () => {
 
 const resetState = () => {
   cleanup()
+  connRetried = false
   status.value = 'idle'
   role.value = null
   peerId.value = ''
@@ -241,14 +300,38 @@ const send = (msg: PvPMessage) => {
   }
 }
 
-// Reset the pong timer whenever the app regains focus so we don't
-// falsely detect a disconnect after the browser throttled our timers
-// while the user was sharing via WhatsApp / switching apps.
+// When the app returns from background (e.g. after sharing via WhatsApp),
+// the browser may have killed the PeerJS signaling WebSocket. If the host
+// is still waiting for a guest, we MUST reconnect to the signaling server
+// so incoming connection offers can be relayed.
 document.addEventListener('visibilitychange', () => {
-  pvpLog(`visibility: hidden=${document.hidden} connOpen=${conn?.open} status=${status.value}`)
-  if (!document.hidden && conn?.open) {
+  pvpLog(`visibility: hidden=${document.hidden} connOpen=${conn?.open} peerOpen=${peer?.open} peerDisconnected=${peer?.disconnected} status=${status.value}`)
+  if (document.hidden) return
+
+  // Reconnect PeerJS signaling if the peer was dropped while backgrounded
+  if (peer && !peer.destroyed && peer.disconnected) {
+    pvpLog('peer disconnected from signaling — reconnecting')
+    try {
+      peer.reconnect()
+    } catch (e) {
+      pvpLog(`peer.reconnect() failed: ${e}`)
+    }
+  }
+
+  // Check if ICE connection died while backgrounded
+  if (conn && !conn.open) {
+    try {
+      const pc: RTCPeerConnection | undefined =
+        (conn as any).peerConnection ?? (conn as any)._peerConnection
+      if (pc && (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed')) {
+        pvpLog(`ICE ${pc.iceConnectionState} after returning from background`)
+      }
+    } catch { /* ignore */
+    }
+  }
+
+  if (conn?.open) {
     lastPongAt = Date.now()
-    // Immediately ping to verify the connection is still alive
     send({ type: 'ping' })
   }
 })
@@ -341,6 +424,12 @@ const handleMessage = (msg: PvPMessage) => {
         onRemoteStateCheck?.(msg.hash, msg.turn)
         break
 
+      case 'return-to-lobby':
+        pvpLog('remote requested return-to-lobby')
+        goBackToLobby()
+        onReturnToLobby?.()
+        break
+
       case 'ping':
         send({ type: 'pong' })
         break
@@ -360,30 +449,88 @@ const setupConnection = (connection: DataConnection) => {
   conn = connection
   pvpLog(`setupConnection: connId=${connection.connectionId} peer=${connection.peer} type=${connection.type} reliable=${connection.reliable}`)
 
-  // Log ICE connection state changes for debugging NAT traversal issues
-  try {
-    const pc = (connection as any).peerConnection as RTCPeerConnection | undefined
-    if (pc) {
-      pc.oniceconnectionstatechange = () => {
-        pvpLog(`ICE state: ${pc.iceConnectionState}`)
+  // Log ICE connection state changes for debugging NAT traversal issues.
+  // The underlying RTCPeerConnection may not exist immediately — PeerJS
+  // creates it lazily during the signaling exchange. Poll briefly to
+  // catch it once it appears.
+  const hookIce = () => {
+    try {
+      const pc: RTCPeerConnection | undefined =
+        (connection as any).peerConnection ??
+        (connection as any)._peerConnection ??
+        (connection as any).dataChannel?.transport?.iceTransport?.connection
+      if (pc) {
+        pvpLog(`ICE hooked: initialState=${pc.iceConnectionState} signalingState=${pc.signalingState}`)
+        pvpLog(`ICE config: ${JSON.stringify(pc.getConfiguration()?.iceServers?.map(s => s.urls))}`)
+        pc.addEventListener('iceconnectionstatechange', () => {
+          pvpLog(`ICE state: ${pc.iceConnectionState}`)
+          if (pc.iceConnectionState === 'failed') {
+            pvpLog(`ICE FAILED — relay candidates: ${hadRelayCandidates() ? 'yes' : 'NONE (TURN servers unreachable)'}`)
+            // Dump candidate pair stats for diagnosis
+            pc.getStats().then(stats => {
+              stats.forEach(report => {
+                if (report.type === 'candidate-pair') {
+                  pvpLog(`candidate-pair: state=${report.state} local=${report.localCandidateId} remote=${report.remoteCandidateId}`)
+                } else if (report.type === 'local-candidate') {
+                  pvpLog(`local-candidate: ${report.candidateType} ${report.protocol} ${report.address ?? '?'}:${report.port}`)
+                } else if (report.type === 'remote-candidate') {
+                  pvpLog(`remote-candidate: ${report.candidateType} ${report.protocol} ${report.address ?? '?'}:${report.port}`)
+                }
+              })
+            }).catch(() => {
+            })
+          }
+        })
+        pc.addEventListener('icegatheringstatechange', () => {
+          pvpLog(`ICE gathering: ${pc.iceGatheringState}`)
+          if (pc.iceGatheringState === 'complete' && !hadRelayCandidates()) {
+            pvpLog('⚠️ ICE gathering complete with NO relay candidates — all TURN servers failed')
+          }
+        })
+        pc.addEventListener('icecandidate', (e) => {
+          if (e.candidate) {
+            pvpLog(`ICE candidate: ${e.candidate.type ?? '?'} ${e.candidate.protocol ?? ''} ${e.candidate.address ?? 'hidden'}`)
+          } else {
+            pvpLog('ICE candidate gathering complete (null sentinel)')
+          }
+        })
+        return true
       }
-      pc.onicecandidate = (e) => {
-        if (e.candidate) {
-          pvpLog(`ICE candidate: ${e.candidate.type ?? 'unknown'} ${e.candidate.protocol ?? ''} ${e.candidate.address ?? ''}`)
-        }
-      }
+    } catch { /* ignore */
     }
-  } catch { /* peerConnection not exposed — ignore */
+    return false
+  }
+  // Try immediately, then retry a few times
+  if (!hookIce()) {
+    let attempts = 0
+    const icePoller = setInterval(() => {
+      if (hookIce() || ++attempts > 10) clearInterval(icePoller)
+    }, 200)
   }
 
   // Timeout: if the data channel never opens, the WebRTC handshake
-  // likely failed (NAT traversal / TURN issue). Surface an error.
+  // likely failed (NAT traversal / signaling issue). For guests, try
+  // reconnecting once before giving up — the host may have briefly
+  // lost signaling while sharing the invite link.
   connOpenTimeout = setTimeout(() => {
     if (conn && !conn.open) {
-      pvpLog(`conn open timeout after ${CONN_OPEN_TIMEOUT_MS}ms`)
-      status.value = 'error'
-      errorMessage.value = 'Connection timed out — could not reach host. Both players may be behind strict NATs.'
-      cleanup()
+      pvpLog(`conn open timeout after ${CONN_OPEN_TIMEOUT_MS}ms — role=${role.value}`)
+      if (role.value === 'guest' && peer && !peer.destroyed && !connRetried) {
+        connRetried = true
+        pvpLog('guest retrying connection to host')
+        try {
+          conn.close()
+        } catch { /* ignore */
+        }
+        conn = null
+        const hostId = remotePeerId.value
+        const retryConn = peer.connect(hostId, { reliable: true, serialization: 'json' })
+        setupConnection(retryConn)
+      } else {
+        status.value = 'error'
+        errorMessage.value = 'Connection timed out — could not reach host. The host may have lost connection while sharing the invite.'
+        cleanup()
+      }
     }
   }, CONN_OPEN_TIMEOUT_MS)
 
@@ -459,7 +606,7 @@ const usePVP = () => {
 
       const id = generatePeerId()
       pvpLog(`createLobby: peerId=${id}`)
-      peer = new Peer(id, { config: { iceServers: ICE_SERVERS } })
+      peer = new Peer(id, { config: { iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 } })
 
       peer.on('open', (openId: string) => {
         pvpLog(`host peer.open: id=${openId}`)
@@ -488,7 +635,18 @@ const usePVP = () => {
       })
 
       peer.on('disconnected', () => {
-        pvpLog(`host peer.disconnected: destroyed=${peer?.destroyed}`)
+        pvpLog(`host peer.disconnected: destroyed=${peer?.destroyed} status=${status.value}`)
+        // Auto-reconnect to signaling server while waiting for a guest or
+        // in the lobby — the browser likely killed the WebSocket while the
+        // user was away sharing the invite link.
+        if (peer && !peer.destroyed && (status.value === 'waiting' || status.value === 'lobby' || status.value === 'ready')) {
+          pvpLog('host auto-reconnecting to signaling server')
+          try {
+            peer.reconnect()
+          } catch (e) {
+            pvpLog(`host reconnect failed: ${e}`)
+          }
+        }
       })
 
       peer.on('close', () => {
@@ -513,11 +671,11 @@ const usePVP = () => {
 
       const myId = generatePeerId()
       pvpLog(`joinLobby: myPeerId=${myId}`)
-      peer = new Peer(myId, { config: { iceServers: ICE_SERVERS } })
+      peer = new Peer(myId, { config: { iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 } })
 
       peer.on('open', (openId: string) => {
         pvpLog(`guest peer.open: id=${openId}, connecting to host=${hostPeerId}`)
-        const connection = peer!.connect(hostPeerId, { reliable: true })
+        const connection = peer!.connect(hostPeerId, { reliable: true, serialization: 'json' })
         setupConnection(connection)
       })
 
@@ -534,7 +692,15 @@ const usePVP = () => {
       })
 
       peer.on('disconnected', () => {
-        pvpLog(`guest peer.disconnected: destroyed=${peer?.destroyed}`)
+        pvpLog(`guest peer.disconnected: destroyed=${peer?.destroyed} status=${status.value}`)
+        if (peer && !peer.destroyed && status.value === 'connecting') {
+          pvpLog('guest auto-reconnecting to signaling server')
+          try {
+            peer.reconnect()
+          } catch (e) {
+            pvpLog(`guest reconnect failed: ${e}`)
+          }
+        }
       })
 
       peer.on('close', () => {
@@ -608,12 +774,20 @@ const usePVP = () => {
     onStart: (firstTurn: 'host' | 'guest') => void,
     onLaunch: (bladeIndex: number, ax: number, ay: number) => void,
     onSurrender?: () => void,
-    onStateCheck?: (hash: string, turn: number) => void
+    onStateCheck?: (hash: string, turn: number) => void,
+    onLobbyReturn?: () => void
   ) => {
     onGameStart = onStart
     onRemoteLaunch = onLaunch
     onRemoteSurrender = onSurrender ?? null
     onRemoteStateCheck = onStateCheck ?? null
+    onReturnToLobby = onLobbyReturn ?? null
+  }
+
+  /** Signal both players to return to lobby (keeps connection alive). */
+  const returnToLobby = () => {
+    send({ type: 'return-to-lobby' })
+    goBackToLobby()
   }
 
   /** Generate a WhatsApp share link */
@@ -704,6 +878,7 @@ const usePVP = () => {
     copyInviteLink,
     sendCrazyGamesInvite,
     checkInviteFromUrl,
+    returnToLobby,
     leavePvP,
     // Debug
     copyPvpDebugLog,

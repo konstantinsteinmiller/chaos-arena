@@ -101,6 +101,7 @@ const {
   sendStateCheck: pvpSendStateCheck,
   joinLobby: pvpJoinLobby,
   checkInviteFromUrl,
+  returnToLobby: pvpReturnToLobby,
   leavePvP
 } = usePVP()
 
@@ -615,7 +616,9 @@ const onRewardContinue = async () => {
   if (wasPvp) {
     pvpMode.value = false
     gamePvpMode.value = false
-    leavePvP()
+    // Return to PvP lobby (keep connection alive) instead of destroying it
+    pvpReturnToLobby()
+    pvpModalOpen.value = true
   } else if (wasGhost) {
     ghostMode.value = false
     ghostEnemy.value = null
@@ -736,7 +739,15 @@ onMounted(() => {
       }
     },
     onRemoteSurrender,
-    onRemoteStateCheck
+    onRemoteStateCheck,
+    // Remote player returned to lobby — open the lobby modal locally too
+    () => {
+      pvpMode.value = false
+      gamePvpMode.value = false
+      pvpModalOpen.value = true
+      coinsAwarded.value = false
+      initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
+    }
   )
 
   // Wire local launch events → PvP network

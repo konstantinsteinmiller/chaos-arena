@@ -2,6 +2,7 @@ import { computed, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import useUserDb from '@/use/useUserDb'
 import { type Difficulties, DIFFICULTY } from '@/utils/enums'
+import { GAME_USER_LANGUAGE } from '@/utils/constants'
 import { mobileCheck } from '@/utils/function'
 import type { GameCard } from '@/types/game.ts'
 import useModels from '@/use/useModels.ts'
@@ -79,6 +80,7 @@ const useUser = () => {
         break
       case 'language':
         userLanguage.value = value
+        sessionStorage.setItem(GAME_USER_LANGUAGE, value)
         break
       case 'difficulty':
         userDifficulty.value = value

@@ -32,7 +32,8 @@
       "Bash(find \"/c/Users/konst/chaos-arena/src/components\" -name \"*.vue\" -exec grep -l \"label\\\\|:title\\\\|:placeholder\" {} \\\\;)",
       "Bash(find:*)",
       "Bash(VITE_ENABLE_OBFUSCATION=false npx vite:*)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"EXIT:$?\")"
     ]
   }
 }

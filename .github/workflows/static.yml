@@ -72,14 +72,23 @@ jobs:
       - name: Build Main Production
         run: npm run build-github-main
         working-directory: main
+        env:
+          VITE_APP_TURN_USERNAME: ${{ secrets.VITE_APP_TURN_USERNAME }}
+          VITE_APP_TURN_CREDENTIAL: ${{ secrets.VITE_APP_TURN_CREDENTIAL }}
 
       - name: Build Develop Production
         run: npm run build-github-develop
         working-directory: develop
+        env:
+          VITE_APP_TURN_USERNAME: ${{ secrets.VITE_APP_TURN_USERNAME }}
+          VITE_APP_TURN_CREDENTIAL: ${{ secrets.VITE_APP_TURN_CREDENTIAL }}
 
       - name: Build Demo Production
         run: npm run build-github-demo
         working-directory: demo
+        env:
+          VITE_APP_TURN_USERNAME: ${{ secrets.VITE_APP_TURN_USERNAME }}
+          VITE_APP_TURN_CREDENTIAL: ${{ secrets.VITE_APP_TURN_CREDENTIAL }}
 
       - name: Create Dist Folder
         run: mkdir dist

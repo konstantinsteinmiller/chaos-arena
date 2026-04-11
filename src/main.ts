@@ -57,6 +57,24 @@ const bootstrap = async () => {
     )
   }
 
+  // Sync i18n locale when IndexedDB hydrates the saved language on reload
+  // (skip when CrazyGames already controls locale)
+  if (!(cgLocale && LANGUAGES.includes(cgLocale))) {
+    const { userLanguage: storedLang } = useUser()
+    const { isDbInitialized: dbReady } = await import('@/use/useMatch')
+    const stopLangSync = watch(
+      dbReady,
+      (ready) => {
+        if (!ready) return
+        stopLangSync()
+        if (storedLang.value && LANGUAGES.includes(storedLang.value)) {
+          i18n.global.locale.value = storedLang.value
+        }
+      },
+      { immediate: true }
+    )
+  }
+
   const app = createApp(App)
 
   app.use(router)
