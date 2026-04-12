@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue' // Added computed
 import { useI18n } from 'vue-i18n'
 import useUser from '@/use/useUser'
+import { setI18nLocale } from '@/i18n'
 import FModal from '@/components/molecules/FModal.vue'
 import FButton from '@/components/atoms/FButton.vue'
 import FSwitch from '@/components/atoms/FSwitch.vue'
@@ -20,6 +21,11 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const { locale }: any = useI18n({ useScope: 'global' })
+// main.ts exposes the installed i18n instance on window so runtime
+// locale switches (which need `i18n.global.setLocaleMessage`) can
+// reach it without prop-drilling.
+const appI18n: any = (window as any).__i18n
+
 
 const {
   setSettingValue,
@@ -33,8 +39,19 @@ const {
 
 const currentTab = ref('general')
 
-watch(userLanguage, (newValue: string) => {
-  locale.value = newValue
+watch(userLanguage, async (newValue: string) => {
+  // Lazy-load the locale's message chunk before swapping. If the chunk
+  // is already cached this is effectively synchronous. setI18nLocale
+  // also handles error fallback, so a missing/failed fetch leaves the
+  // previous locale untouched rather than rendering raw keys.
+  if (appI18n) {
+    await setI18nLocale(appI18n, newValue)
+  } else {
+    // Fallback for the rare case getCurrentInstance returned null —
+    // keep the previous behaviour so at minimum the display switches
+    // for already-loaded locales.
+    locale.value = newValue
+  }
 })
 
 const isMobile = computed(() => {

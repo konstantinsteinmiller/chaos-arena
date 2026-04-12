@@ -3,13 +3,18 @@ import useUser, { isWeb } from '@/use/useUser'
 import { isDebug } from '@/use/useMatch.ts'
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', name: 'main-menu', component: () => import('@/views/MainMenu.vue'), redirect: 'battle', children: [] },
+  {
+    path: '/',
+    name: 'main-menu',
+    component: () => import('@/views/SpinnerArena.vue')/*, redirect: 'battle'*/,
+    children: []
+  },
   { path: '/battle', name: 'battle', component: () => import('@/views/SpinnerArena.vue') },
-  ...isDebug.value ? [
-    { path: '/crit-test', name: 'crit-test', component: () => import('@/views/CritTestScene.vue') },
-    { path: '/power-up', name: 'power-up', component: () => import('@/views/PowerupTestScene.vue') },
-    { path: '/trailer', name: 'trailer', component: () => import('@/views/TrailerScene.vue') }
-  ] : []
+  // ...isDebug.value ? [
+  //   { path: '/crit-test', name: 'crit-test', component: () => import('@/views/CritTestScene.vue') },
+  //   { path: '/power-up', name: 'power-up', component: () => import('@/views/PowerupTestScene.vue') },
+  //   { path: '/trailer', name: 'trailer', component: () => import('@/views/TrailerScene.vue') }
+  // ] : []
 ]
 
 const router = createRouter({

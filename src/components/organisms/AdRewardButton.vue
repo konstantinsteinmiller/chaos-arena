@@ -11,7 +11,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  coins: 100
+  coins: 125
 })
 
 const emit = defineEmits<{

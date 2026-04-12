@@ -34,7 +34,13 @@
       "Bash(VITE_ENABLE_OBFUSCATION=false npx vite:*)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(echo \"EXIT:$?\")",
-      "Bash(pnpm run:*)"
+      "Bash(pnpm run:*)",
+      "Bash(du -sh public/images/*)",
+      "Bash(du -sh public/audio/*)",
+      "Bash(wc -l src/i18n/*.ts)",
+      "Bash(npx tsx:*)",
+      "Bash(du -b src/i18n/locales/*.ts src/i18n/translations.ts src/i18n/stageTranslations.ts src/i18n/campaign.ts)",
+      "Bash(npx cross-env:*)"
     ]
   }
 }

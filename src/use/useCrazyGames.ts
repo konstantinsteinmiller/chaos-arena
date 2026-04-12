@@ -174,6 +174,8 @@ export const initCrazyGames = async (): Promise<void> => {
   if (!isActiveEnv(candidate)) {
     // Non-crazy-web build, or running in a 'disabled' environment.
     // Leave localStorage alone and keep `isSdkActive` false.
+    // sdk = candidate
+    // isSdkActive.value = true
     return
   }
 
@@ -183,6 +185,7 @@ export const initCrazyGames = async (): Promise<void> => {
   await hydrateFromSdk()
   patchLocalStorage()
   await captureSdkProfile()
+  registerMuteListener()
 }
 
 // ─── Profile / settings capture ───────────────────────────────────────────
@@ -193,13 +196,20 @@ export const initCrazyGames = async (): Promise<void> => {
  * abort the rest — the SDK surface differs slightly between builds.
  */
 const captureSdkProfile = async (): Promise<void> => {
-  // Initial mute state from `sdk.game.muteAudio`. The SDK exposes this as a
-  // plain boolean property, kept in sync by `addMuteListener` afterwards.
+  // Initial mute state. Per the CG SDK v3 docs, the canonical read path is
+  // the property `sdk.game.settings.muteAudio` ("please disable the game
+  // audio if this is true"). We also defensively check `sdk.game.muteAudio`
+  // and an `isMuted()` method in case the SDK surface drifts between
+  // builds, but the `settings.muteAudio` path is the documented one.
   try {
-    const m = sdk?.game?.muteAudio
+    let m: unknown = sdk?.game?.settings?.muteAudio
+    if (typeof m !== 'boolean') m = sdk?.game?.muteAudio
+    if (typeof m !== 'boolean' && typeof sdk?.game?.isMuted === 'function') {
+      m = sdk.game.isMuted()
+    }
     if (typeof m === 'boolean') isSdkMuted.value = m
   } catch (e) {
-    console.warn('[crazygames] read muteAudio failed', e)
+    console.warn('[crazygames] read settings.muteAudio failed', e)
   }
 
   // Player display name. `sdk.user.getUser()` resolves to `null` for
@@ -323,6 +333,22 @@ const untrackKey = (key: string): void => {
 // ─── Gameplay lifecycle ───────────────────────────────────────────────────
 
 /**
+ * Signal a "happy moment" to the CrazyGames SDK. CrazyGames uses these
+ * events to pick the best times to highlight the game and to calibrate
+ * player-sentiment analytics, so we fire it when the player just landed
+ * a clearly positive reward (roulette win, boss drop, etc.). No-op when
+ * the SDK isn't active.
+ */
+export const triggerHappytime = (): void => {
+  if (!sdk || !isSdkActive.value) return
+  try {
+    sdk.game?.happytime?.()
+  } catch (e) {
+    console.warn('[crazygames] happytime failed', e)
+  }
+}
+
+/**
  * Notify CrazyGames that interactive gameplay is starting. Idempotent.
  * Call when the player enters the arena / begins a match.
  */
@@ -353,56 +379,100 @@ export const stopGameplay = (): void => {
 // ─── Mute sync ────────────────────────────────────────────────────────────
 
 type MuteCallback = (muted: boolean) => void
+const muteListeners = new Set<MuteCallback>()
 
 /**
- * Subscribe to CrazyGames-side mute toggles. The SDK fires the listener
- * whenever the platform chrome (or another part of the page) flips the
- * mute state, letting components mirror it into their own audio settings.
+ * Wire up the CrazyGames → game side of the mute bridge. Called once at
+ * init, after captureSdkProfile has read the initial state.
+ *
+ * Per the CG SDK v3 docs, the supported way to react to mute changes is
+ * `sdk.game.addSettingsChangeListener(listener)`, where `listener` is
+ * called with the *full settings object* (not just a boolean) every time
+ * any game setting changes — we extract `muteAudio` from that object.
+ *
+ * We keep a defensive `addMuteListener` branch for older shims, but the
+ * settings-change path is the documented one and the only one that
+ * actually fires in the live SDK. The previous code here relied solely
+ * on `addMuteListener`, which never fires on the real v3 surface — that
+ * is why the platform mute button didn't reach the game.
+ */
+const registerMuteListener = (): void => {
+  if (!sdk?.game) return
+
+  const handleMuteChange = (muted: boolean) => {
+    if (isSdkMuted.value === muted) return
+    isSdkMuted.value = muted
+    muteListeners.forEach(cb => {
+      try {
+        cb(muted)
+      } catch (e) {
+        console.warn('[crazygames] mute callback threw', e)
+      }
+    })
+  }
+
+  if (typeof sdk.game.addSettingsChangeListener === 'function') {
+    try {
+      sdk.game.addSettingsChangeListener((newSettings: any) => {
+        const m = newSettings?.muteAudio
+        if (typeof m === 'boolean') handleMuteChange(m)
+      })
+    } catch (e) {
+      console.warn('[crazygames] addSettingsChangeListener failed', e)
+    }
+  } else if (typeof sdk.game.addMuteListener === 'function') {
+    // Legacy / shim fallback.
+    try {
+      sdk.game.addMuteListener((muted: boolean) => handleMuteChange(!!muted))
+    } catch (e) {
+      console.warn('[crazygames] addMuteListener failed', e)
+    }
+  }
+}
+
+/**
+ * Subscribe to CrazyGames-side mute toggles. The listener fires whenever
+ * the platform chrome (or another part of the page) flips the mute state,
+ * letting components mirror it into their own audio settings.
+ *
+ * New subscribers are IMMEDIATELY replayed the current SDK mute state
+ * (when known), so a single hook covers both the initial sync and future
+ * toggles — no separate "apply once" watcher needed.
  *
  * Returns an unsubscribe function. When the SDK isn't active, the callback
  * is never invoked and the unsubscribe is a no-op.
  */
-export const addCrazyMuteListener = (cb: MuteCallback): (() => void) => {
-  if (!sdk) return () => {
-  }
-  // Wrap so we can also keep the local `isSdkMuted` ref in sync — components
-  // that read it directly stay reactive without subscribing themselves.
-  const wrapped: MuteCallback = (muted) => {
-    isSdkMuted.value = !!muted
-    cb(!!muted)
-  }
-  try {
-    sdk.game?.addMuteListener?.(wrapped)
-  } catch (e) {
-    console.warn('[crazygames] addMuteListener failed', e)
-    return () => {
-    }
-  }
-  return () => {
+export const onCrazyMuteChange = (cb: MuteCallback): (() => void) => {
+  muteListeners.add(cb)
+  if (isSdkMuted.value !== null) {
     try {
-      sdk?.game?.removeMuteListener?.(wrapped)
+      cb(isSdkMuted.value)
     } catch (e) {
-      console.warn('[crazygames] removeMuteListener failed', e)
+      console.warn('[crazygames] mute replay callback threw', e)
     }
   }
+  return () => muteListeners.delete(cb)
 }
 
 /**
- * Push a new mute state into the CrazyGames SDK so the platform-level
- * mute UI reflects an in-game toggle. Safe to call when the SDK isn't
- * active — falls through silently.
+ * Record an in-game mute toggle so any code reading `isSdkMuted` sees the
+ * new value. NOTE: the CrazyGames SDK v3 has no public setter for the
+ * platform-level mute — that toggle is owned by the CG chrome and only
+ * flows one-way (platform → game) through the settings-change listener.
+ * The previous property-assignment attempts (`sdk.game.muteAudio = muted`)
+ * were silently failing on the real SDK, which is why the in-game mute
+ * button never moved the platform UI. We now just update our local ref so
+ * internal consumers stay coherent. Safe to call when the SDK is inactive.
  */
 export const setCrazyMuted = (muted: boolean): void => {
-  if (!sdk) return
-  try {
-    if (sdk.game && typeof sdk.game.muteAudio === 'boolean') {
-      sdk.game.muteAudio = muted
-    }
-    isSdkMuted.value = muted
-  } catch (e) {
-    console.warn('[crazygames] setCrazyMuted failed', e)
-  }
+  isSdkMuted.value = muted
 }
+
+// Backwards-compat alias — `addCrazyMuteListener` was the old name used by
+// `useCrazyMuteSync`. It's just `onCrazyMuteChange` under a different
+// spelling so existing call sites keep compiling; prefer the new name in
+// new code.
+export const addCrazyMuteListener = onCrazyMuteChange
 
 // ─── Rewarded video ads ───────────────────────────────────────────────────
 
@@ -507,7 +577,9 @@ const useCrazyGames = () => ({
   showRewardedAd,
   showMidgameAd,
   addCrazyMuteListener,
-  setCrazyMuted
+  onCrazyMuteChange,
+  setCrazyMuted,
+  triggerHappytime
 })
 
 export default useCrazyGames
