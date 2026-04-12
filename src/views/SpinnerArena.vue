@@ -37,9 +37,17 @@ import PvPLobbyModal from '@/components/organisms/PvPLobbyModal.vue'
 import usePVP from '@/use/usePVP'
 import usePvpStats, { calcHonorPoints } from '@/use/usePvpStats'
 import useLeaderboard, { type LeaderboardEntry } from '@/use/useLeaderboard'
-import { isSdkActive, startGameplay, stopGameplay, showRewardedAd, showMidgameAd } from '@/use/useCrazyGames'
+import {
+  isSdkActive,
+  startGameplay,
+  stopGameplay,
+  showRewardedAd,
+  showMidgameAd,
+  triggerHappytime
+} from '@/use/useCrazyGames'
 import useBottomSafe from '@/use/useBottomSafe'
 import { getSelectedSkin, modelImgPath } from '@/use/useModels'
+import useAssets from '@/use/useAssets'
 import { isCrazyGamesFullRelease } from '@/use/useMatch.ts'
 import { spawnCoinExplosion } from '@/use/useCoinExplosion'
 import useCheats from '@/use/useCheats'
@@ -359,8 +367,6 @@ const onRemoteStateCheck = (hash: string, turn: number) => {
   checkDesync(turn)
 }
 
-const adRewardCoins = 100
-
 // ─── 2x Simulation Speed Boost ────────────────────────────────────────────
 
 // Players can watch a rewarded video to unlock a temporary 2x speed-up.
@@ -611,6 +617,10 @@ const onRouletteResult = (result: RouletteResult) => {
   showRouletteReward.value = true
   playSound('happy')
   spawnMeteorShower(60, 40, 50) // warm star burst
+  // Signal a "happy moment" to the CrazyGames SDK alongside the reward VFX —
+  // the platform uses these events to time featured-game highlights.
+  // No-op outside a crazy-web build thanks to the isSdkActive guard inside.
+  triggerHappytime()
   // Fire coin explosion from the reward label once the overlay renders
   nextTick(() => {
     fireCoinExplosion(rouletteRewardCoinRef.value)
@@ -775,6 +785,21 @@ onMounted(() => {
   renderRafId = requestAnimationFrame(renderLoop)
 
   recordPlayerStage(currentStageId.value)
+
+  // Background-load every remaining skin (the ~40 not needed for current
+  // stage + player team) once the arena is rendered. Defers bandwidth /
+  // decode cost out of the initial FLogoProgress critical path so the
+  // game boots faster, while still having everything ready by the time
+  // the config modal is opened.
+  const { preloadRemainingSkins } = useAssets()
+  const kick = () => {
+    preloadRemainingSkins()
+  }
+  if (typeof (window as any).requestIdleCallback === 'function') {
+    (window as any).requestIdleCallback(kick, { timeout: 2000 })
+  } else {
+    setTimeout(kick, 500)
+  }
 
   // Check URL for incoming PvP invite — open modal and auto-join
   const pendingPvpHost = checkInviteFromUrl()
@@ -1040,7 +1065,6 @@ onUnmounted(() => {
           DailyRewards(v-if="currentStageId >= 3" @coins-awarded="fireCoinExplosion")
           AdRewardButton(
             v-if="currentStageId >= 3"
-            :coins="adRewardCoins"
             @coins-awarded="fireCoinExplosion"
           )
           BattlePass(v-if="currentStageId >= 6" @coins-awarded="fireCoinExplosion")

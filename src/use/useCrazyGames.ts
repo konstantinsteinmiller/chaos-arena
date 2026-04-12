@@ -174,6 +174,8 @@ export const initCrazyGames = async (): Promise<void> => {
   if (!isActiveEnv(candidate)) {
     // Non-crazy-web build, or running in a 'disabled' environment.
     // Leave localStorage alone and keep `isSdkActive` false.
+    // sdk = candidate
+    // isSdkActive.value = true
     return
   }
 
@@ -321,6 +323,22 @@ const untrackKey = (key: string): void => {
 }
 
 // ─── Gameplay lifecycle ───────────────────────────────────────────────────
+
+/**
+ * Signal a "happy moment" to the CrazyGames SDK. CrazyGames uses these
+ * events to pick the best times to highlight the game and to calibrate
+ * player-sentiment analytics, so we fire it when the player just landed
+ * a clearly positive reward (roulette win, boss drop, etc.). No-op when
+ * the SDK isn't active.
+ */
+export const triggerHappytime = (): void => {
+  if (!sdk || !isSdkActive.value) return
+  try {
+    sdk.game?.happytime?.()
+  } catch (e) {
+    console.warn('[crazygames] happytime failed', e)
+  }
+}
 
 /**
  * Notify CrazyGames that interactive gameplay is starting. Idempotent.
@@ -507,7 +525,8 @@ const useCrazyGames = () => ({
   showRewardedAd,
   showMidgameAd,
   addCrazyMuteListener,
-  setCrazyMuted
+  setCrazyMuted,
+  triggerHappytime
 })
 
 export default useCrazyGames

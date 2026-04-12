@@ -6,9 +6,7 @@ It features a github pages deployed CI cd pipeline and a windows build + demo bu
 
 WIP: [playable demo](https://konstantinsteinmiller.github.io/chaos-arena/)
 
-![Chaos Arena menu](https://github.com/konstantinsteinmiller/chaos-arena/blob/main/src/assets/documentation/main-menu.webp)
-
-![Gameplay](https://github.com/konstantinsteinmiller/chaos-arena/blob/main/src/assets/documentation/gameplay.webp)
+![Chaos Arena Gameplay](https://github.com/konstantinsteinmiller/chaos-arena/blob/main/src/assets/documentation/gameplay.webp)
 
 # Todo
 

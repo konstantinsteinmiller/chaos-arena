@@ -3,7 +3,12 @@ import router from '@/router'
 import '@/assets/css/tailwind.css'
 import '@/assets/css/index.sass'
 import { createI18n } from 'vue-i18n'
-import translations from '@/i18n'
+import {
+  loadLocaleMessages,
+  resolveInitialLocale,
+  setI18nLocale,
+  isSupportedLocale
+} from '@/i18n'
 import { GAME_USER_LANGUAGE } from '@/utils/constants.ts'
 import { LANGUAGES } from '@/utils/enums'
 import { initCrazyGames, crazyLocale } from '@/use/useCrazyGames'
@@ -15,9 +20,9 @@ const bootstrap = async () => {
   // load time, and we want them to see SDK-hydrated values.
   await initCrazyGames()
 
-  // If CrazyGames reported a player locale we support, use it as the
-  // initial i18n locale. We deliberately overwrite the sessionStorage hint
-  // so subsequent boots in the same tab keep matching the CG-side
+  // If CrazyGames reported a supported player locale, persist it as the
+  // session hint so resolveInitialLocale picks it up below and every
+  // subsequent boot in this tab stays consistent with the portal's
   // preference rather than a stale browser default.
   const cgLocale = crazyLocale.value
   if (cgLocale && LANGUAGES.includes(cgLocale)) {
@@ -26,20 +31,31 @@ const bootstrap = async () => {
 
   const { default: App } = await import('@/App.vue')
 
-  const userLanguage = sessionStorage.getItem(GAME_USER_LANGUAGE) || navigator.language?.split('-')[0]
+  // Resolve and LOAD just the initial locale bundle before creating the
+  // i18n instance. The English fallback is loaded in parallel so missing
+  // keys are never undefined while the active locale's chunk is still
+  // in flight. If the initial locale IS English we only fetch once.
+  const initial = resolveInitialLocale(GAME_USER_LANGUAGE)
+  const needsFallback = initial !== 'en'
+  const [initialMsgs, fallbackMsgs] = await Promise.all([
+    loadLocaleMessages(initial).catch(() => ({})),
+    needsFallback ? loadLocaleMessages('en').catch(() => ({})) : Promise.resolve(null)
+  ])
 
   const i18n: any = createI18n({
-    locale: userLanguage || 'en', // set locale
-    fallbackLocale: 'en', // set fallback locale
-    messages: translations,
+    locale: initial,
+    fallbackLocale: 'en',
+    messages: needsFallback
+      ? { [initial]: initialMsgs, en: fallbackMsgs ?? {} }
+      : { en: initialMsgs },
     missingWarn: false,
     fallbackWarn: false
   })
 
   // If the SDK gave us a supported locale, push it through the user store
   // so userLanguage (and anything reactive to it) lines up with i18n. We
-  // wait for IndexedDB hydration to finish first so we don't race with the
-  // saved-preference loader and end up writing then immediately overwriting.
+  // wait for IndexedDB hydration so we don't race with the saved-
+  // preference loader and end up writing then immediately overwriting.
   if (cgLocale && LANGUAGES.includes(cgLocale)) {
     const { userLanguage: storedLanguage, setSettingValue } = useUser()
     const { isDbInitialized } = await import('@/use/useMatch')
@@ -51,14 +67,18 @@ const bootstrap = async () => {
         if (storedLanguage.value !== cgLocale) {
           setSettingValue('language', cgLocale)
         }
-        i18n.global.locale.value = cgLocale
+        // cgLocale is the one we already loaded above, so this is a
+        // cheap no-op on the loader side.
+        setI18nLocale(i18n, cgLocale)
       },
       { immediate: true }
     )
   }
 
   // Sync i18n locale when IndexedDB hydrates the saved language on reload
-  // (skip when CrazyGames already controls locale)
+  // (skip when CrazyGames already controls locale). If the hydrated
+  // locale differs from what we booted with, `setI18nLocale` will fetch
+  // the new chunk on-the-fly before swapping.
   if (!(cgLocale && LANGUAGES.includes(cgLocale))) {
     const { userLanguage: storedLang } = useUser()
     const { isDbInitialized: dbReady } = await import('@/use/useMatch')
@@ -68,13 +88,18 @@ const bootstrap = async () => {
       (ready) => {
         if (!ready) return
         stopLangSync?.()
-        if (storedLang.value && LANGUAGES.includes(storedLang.value)) {
-          i18n.global.locale.value = storedLang.value
+        if (isSupportedLocale(storedLang.value)) {
+          setI18nLocale(i18n, storedLang.value)
         }
       },
       { immediate: true }
     )
   }
+
+  // Expose the instance globally so composables / skills that want to
+  // trigger a runtime locale switch (e.g. OptionsModal) can resolve the
+  // active i18n without prop-drilling.
+  ;(window as any).__i18n = i18n
 
   const app = createApp(App)
 

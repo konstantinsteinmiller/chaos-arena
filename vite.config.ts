@@ -31,7 +31,15 @@ export default defineConfig(({ mode, command }) => {
         // Exclude files with dynamic imports — the obfuscator's stringArray
         // rewrites import paths into array lookups that Vite can no longer
         // resolve, which breaks code splitting.
-        exclude: [/router\/index\.ts$/, /main\.ts$/],
+        exclude: [
+          /router\/index\.ts$/,
+          /main\.ts$/,
+          // i18n loader uses `import.meta.glob` for per-locale code
+          // splitting — the obfuscator's stringArray rewrites those
+          // dynamic paths so rollup can no longer produce separate
+          // chunks (every locale ends up inlined in index.js).
+          /i18n[\\/]index\.ts$/
+        ],
         options: {
           compact: true,
           controlFlowFlattening: true,
