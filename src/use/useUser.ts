@@ -28,7 +28,7 @@ export const version: string = APP_VERSION
 
 const userDifficulty: Ref<Difficulties> = ref(DIFFICULTY.MEDIUM)
 const userSoundVolume: Ref<number> = ref(0.7)
-const userMusicVolume: Ref<number> = ref(0.1)
+const userMusicVolume: Ref<number> = ref(0.6)
 const userLanguage: Ref<string> = ref(/*navigator?.language?.split('-')[0] || */'en')
 
 const userTutorialsDoneMap: Ref<any> = ref('{}')

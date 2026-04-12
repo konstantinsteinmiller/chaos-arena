@@ -189,8 +189,8 @@ const BASE_STAGES: Stage[] = [
 
   // ── Mid Game (21-50) ──────────────────────────────────────────────────────
   s(21, 'stage_21', [
-    e('star', 'speedy', 6, 6, 'tornado'),
-    e('cushioned', 'tanky', 6, 6, 'shield')
+    e('star', 'speedy', 6, 10, 'tornado'),
+    e('cushioned', 'tanky', 6, 7, 'shield')
   ], 300, 90, { arenaType: 'forest' }),
   s(22, 'stage_22', [
     e('star', 'speedy', 7, 6, 'reddragon'),
@@ -198,8 +198,8 @@ const BASE_STAGES: Stage[] = [
     e('round', 'tanky', 6, 7, 'galaxy')
   ], 320, 95, { arenaType: 'shock' }),
   s(23, 'stage_23', [
-    e('star', 'balanced', 7, 7, 'blades'),
-    e('quadratic', 'tanky', 7, 7, 'prisma')
+    e('star', 'balanced', 7, 8, 'blades'),
+    e('quadratic', 'tanky', 7, 8, 'prisma')
   ], 310, 90),
   s(24, 'stage_24', [
     e('star', 'speedy', 7, 7, 'axe'),
@@ -214,7 +214,7 @@ const BASE_STAGES: Stage[] = [
   ], 560, 140, { isBoss: true }),
   s(26, 'stage_26', [
     e('star', 'speedy', 8, 8, 'reddragon'),
-    e('quadratic', 'tanky', 8, 8, 'mysticaleye')
+    e('quadratic', 'tanky', 9, 8, 'mysticaleye')
   ], 350, 100),
   s(27, 'stage_27', [
     e('star', 'speedy', 8, 8, 'axe'),
@@ -279,13 +279,13 @@ const BASE_STAGES: Stage[] = [
     e('triangle', 'tanky', 22, 20, 'salamaner', 'ghost')
   ], 1000, 230, { isBoss: true }),
   s(41, 'stage_41', [
-    e('star', 'speedy', 12, 12, 'blades'),
-    e('triangle', 'speedy', 12, 11, 'snake')
+    e('star', 'speedy', 15, 18, 'blades'),
+    e('triangle', 'balanced', 13, 15, 'snake')
   ], 520, 155, { arenaType: 'shock' }),
   s(42, 'stage_42', [
-    e('star', 'speedy', 13, 12, 'axe'),
-    e('cushioned', 'tanky', 12, 13, 'gear'),
-    e('round', 'tanky', 12, 12, 'turtle')
+    e('star', 'speedy', 13, 14, 'axe'),
+    e('cushioned', 'tanky', 12, 15, 'gear'),
+    e('round', 'tanky', 12, 14, 'turtle')
   ], 540, 160, { arenaType: 'lava', bouncers: 3 }),
   s(43, 'stage_43', [
     e('round', 'tanky', 13, 13, 'galaxy'),
@@ -349,7 +349,7 @@ const BASE_STAGES: Stage[] = [
   ], 640, 190, { arenaType: 'thunder' }),
   // 55 — CHILD-EMITTER boss
   s(55, 'stage_55', [
-    e('round', 'tanky', 25, 33, 'dark', 'child-emitter')
+    e('round', 'tanky', 25, 30, 'dark', 'child-emitter')
   ], 1200, 260, { isBoss: true }),
   s(56, 'stage_56', [
     e('cushioned', 'balanced', 16, 15, 'mountain'),
@@ -371,7 +371,7 @@ const BASE_STAGES: Stage[] = [
   ], 680, 205, { arenaType: 'thunder' }),
   // 60 — SPLIT boss
   s(60, 'stage_60', [
-    e('quadratic', 'tanky', 27, 32, 'mysticaleye', 'split')
+    e('quadratic', 'tanky', 26, 29, 'mysticaleye', 'split')
   ], 1350, 290, { isBoss: true }),
   s(61, 'stage_61', [
     e('star', 'speedy', 17, 17, 'blades'),
@@ -380,7 +380,7 @@ const BASE_STAGES: Stage[] = [
   ], 690, 210, { arenaType: 'shock', bouncers: 1 }),
   s(62, 'stage_62', [
     e('star', 'speedy', 18, 17, 'axe'),
-    e('round', 'tanky', 17, 18, 'bear')
+    e('round', 'tanky', 17, 21, 'bear')
   ], 700, 210, { arenaType: 'lava' }),
   s(63, 'stage_63', [
     e('quadratic', 'balanced', 18, 18, 'prisma'),
@@ -388,12 +388,12 @@ const BASE_STAGES: Stage[] = [
     e('cushioned', 'balanced', 17, 17, 'mountain')
   ], 720, 215, { arenaType: 'ice' }),
   s(64, 'stage_64', [
-    e('star', 'speedy', 18, 18, 'ice'),
-    e('triangle', 'speedy', 18, 17, 'salamaner')
+    e('star', 'speedy', 18, 23, 'ice'),
+    e('triangle', 'speedy', 23, 17, 'salamaner')
   ], 730, 220, { arenaType: 'thunder' }),
   // 65 — GHOST boss
   s(65, 'stage_65', [
-    e('star', 'balanced', 35, 28, 'reddragon', 'ghost')
+    e('star', 'balanced', 34, 28, 'reddragon', 'ghost')
   ], 1500, 310, { isBoss: true }),
   s(66, 'stage_66', [
     e('star', 'speedy', 19, 18, 'tornado'),
@@ -466,7 +466,7 @@ const BASE_STAGES: Stage[] = [
   ], 870, 260, { arenaType: 'thunder' }),
   // 80 — STAT-SWITCH boss
   s(80, 'stage_80', [
-    e('cushioned', 'tanky', 39, 39, 'boulder', 'stat-switch')
+    e('cushioned', 'tanky', 36, 32, 'boulder', 'stat-switch')
   ], 1800, 360, { isBoss: true }),
 
   // ── Endgame Showcase (81-100) ─────────────────────────────────────────────
@@ -601,7 +601,7 @@ const cycleSuffix = (cycle: number): string =>
  *              L>10 term in upgradeCost), so every loop tightens the
  *              economy and makes rewarded-ad tops-up genuinely useful.
  */
-const cycleLevelBonus = (cycle: number) => cycle * 10
+const cycleLevelBonus = (cycle: number) => cycle * 22
 const cycleRewardMul = (cycle: number) => 1 + cycle * 0.35
 
 // ── Mid-game reward trim ──────────────────────────────────────────────────

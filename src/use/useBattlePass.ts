@@ -29,7 +29,7 @@ import { resetHonorTrack } from '@/use/usePvpStats'
 
 // ─── Tunables ───────────────────────────────────────────────────────────────
 
-export const BP_TOTAL_STAGES = 50
+export const BP_TOTAL_STAGES = 100
 export const BP_XP_PER_STAGE = 100
 /** Battle pass season length in days. After this, all progress resets. */
 export const BP_SEASON_DAYS = 30
@@ -38,8 +38,11 @@ export const BP_XP_CAMPAIGN_WIN = 50        // 1/2 of a stage
 export const BP_XP_LEADERBOARD_WIN = 25     // 1/4 of a stage
 export const BP_XP_LOSS = 12.5              // 1/8 of a stage
 
-/** 1-based stage indices that grant a skin instead of coins. */
-export const BP_SKIN_STAGES = new Set<number>([10, 20, 30, 40])
+/** 1-based stage indices that grant a skin instead of coins. Spaced every
+ *  10 levels across the extended 100-stage track so the season still has
+ *  the same "skin every ten levels" cadence players learned in the 50-
+ *  stage version. */
+export const BP_SKIN_STAGES = new Set<number>([10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
 
 const STORAGE_KEY = 'spinner_battle_pass'
 
@@ -131,7 +134,7 @@ const saveState = () => {
 // ─── Reward Table ───────────────────────────────────────────────────────────
 
 /**
- * Coin value for a given stage — linear 30 → 300 across stages 1..50,
+ * Coin value for a given stage — linear 30 → 300 across stages 1..BP_TOTAL_STAGES,
  * rounded to the nearest 5 for tidy UI numbers. Skin stages return the
  * same coin value as a *fallback* if no unowned skin remains.
  */

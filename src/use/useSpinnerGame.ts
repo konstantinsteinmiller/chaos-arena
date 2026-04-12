@@ -921,8 +921,13 @@ export const useSpinnerGame = () => {
   // ── Boss ability tuning ────────────────────────────────────────────────
   // Split-boss: children stats (fractions of the parent).
   const SPLIT_CHILD_COUNT = 5
-  const SPLIT_CHILD_HP_PCT = 0.22
+  // Nerf pass: children now get 66% of the old post-split HP (0.22 → 0.1452),
+  // 25% of the parent's defense multiplier, and 33% of the parent's weight,
+  // so a split swarm can no longer out-tank the boss it came from.
+  const SPLIT_CHILD_HP_PCT = 0.22 * 0.66
   const SPLIT_CHILD_DAMAGE_PCT = 0.35
+  const SPLIT_CHILD_DEFENSE_PCT = 0.25
+  const SPLIT_CHILD_WEIGHT_PCT = 0.33
   const SPLIT_CHILD_RADIUS_PCT = 0.62
   const SPLIT_CHILD_INVULN_MS = 1100
   // Ghost-boss: lateral offset of the twin at spawn, relative to blade radius.
@@ -952,8 +957,15 @@ export const useSpinnerGame = () => {
     let spd = stats.speedMultiplier
     if (firstGameBoost && blade.owner === 'player') dmg *= 2
     // Split-boss children hit for a fraction of the parent's damage so a
-    // swarm can't simply out-DPS a focused target.
-    if (blade.isSplitChild) dmg *= SPLIT_CHILD_DAMAGE_PCT
+    // swarm can't simply out-DPS a focused target. Defense and weight are
+    // also nerfed so each child reads as a fragile minion, not a clone of
+    // the boss — this is the knob the physics + damage formulas both read.
+    let weightMul = 1
+    if (blade.isSplitChild) {
+      dmg *= SPLIT_CHILD_DAMAGE_PCT
+      def *= SPLIT_CHILD_DEFENSE_PCT
+      weightMul = SPLIT_CHILD_WEIGHT_PCT
+    }
     // Stat-switch boss: in attack phase pick max(ATK, DEF) as ATK;
     // in defense phase pick max(ATK, DEF) as DEF.
     if (blade.statSwitchPhase === 'attack') {
@@ -975,8 +987,15 @@ export const useSpinnerGame = () => {
       dmg === stats.damageMultiplier
       && def === stats.defenseMultiplier
       && spd === stats.speedMultiplier
+      && weightMul === 1
     ) return stats
-    return { ...stats, damageMultiplier: dmg, defenseMultiplier: def, speedMultiplier: spd }
+    return {
+      ...stats,
+      damageMultiplier: dmg,
+      defenseMultiplier: def,
+      speedMultiplier: spd,
+      totalWeight: stats.totalWeight * weightMul
+    }
   }
 
   // ─── Factory ─────────────────────────────────────────────────────────────
