@@ -163,6 +163,7 @@ const useSounds = () => {
     // iOS requires volume to be set BEFORE play()
     audio.volume = userSoundVolume.value * ratio
     audio.play().catch(e => console.warn('SFX play blocked:', e))
+    return audio
   }
 
   return {

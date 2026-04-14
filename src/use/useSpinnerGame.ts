@@ -451,6 +451,7 @@ export const useSpinnerGame = () => {
 
   const SHOCK_BOLT_LIFE = 675
   const activeShockBolts: ShockBolt[] = []
+  let activeClashSounds = 0
 
   // Drops every live battle VFX layer. Used on surrender / forced
   // game-over so stale shock bolts and sparks don't linger into the
@@ -460,7 +461,9 @@ export const useSpinnerGame = () => {
     activeSparks.length = 0
   }
 
+  const MAX_ACTIVE_VFX = 10
   const spawnShockBolt = (wallX: number, wallY: number, bladeX: number, bladeY: number) => {
+    if (activeShockBolts.length >= MAX_ACTIVE_VFX) return
     // Extend endpoint slightly past the blade center along the incoming
     // direction so the bolt visually pierces into the core rather than
     // clipping at the rim.
@@ -2828,7 +2831,11 @@ export const useSpinnerGame = () => {
     const pairKey = a.id < b.id ? `${a.id}_${b.id}` : `${b.id}_${a.id}`
     const now = performance.now()
     const lastSpark = sparkCooldowns.get(pairKey) ?? 0
-    if (now - lastSpark >= SPARK_COOLDOWN_MS && sparkImage.complete) {
+    if (
+      now - lastSpark >= SPARK_COOLDOWN_MS
+      && sparkImage.complete
+      && activeSparks.length < MAX_ACTIVE_VFX
+    ) {
       const cx = (a.x + b.x) / 2
       const cy = (a.y + b.y) / 2
       activeSparks.push(createSpritesheetAnim(
@@ -2838,11 +2845,19 @@ export const useSpinnerGame = () => {
       sparkCooldowns.set(pairKey, now)
     }
 
-    // Clash SFX (throttled per pair)
+    // Clash SFX (throttled per pair, capped to MAX_ACTIVE_VFX concurrent)
     const lastClash = clashSoundCooldowns.get(pairKey) ?? 0
-    if (now - lastClash >= CLASH_SOUND_COOLDOWN_MS) {
+    if (now - lastClash >= CLASH_SOUND_COOLDOWN_MS && activeClashSounds < MAX_ACTIVE_VFX) {
       const idx = Math.floor(Math.random() * 5) + 1
-      playSound(`clash-${idx}`)
+      const audio = playSound(`clash-${idx}`)
+      if (audio) {
+        activeClashSounds++
+        const release = () => {
+          activeClashSounds = Math.max(0, activeClashSounds - 1)
+        }
+        audio.addEventListener('ended', release, { once: true })
+        audio.addEventListener('error', release, { once: true })
+      }
       clashSoundCooldowns.set(pairKey, now)
     }
   }
