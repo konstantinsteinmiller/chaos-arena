@@ -17,6 +17,11 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits(['update:modelValue', 'update:activeTab'])
 
+// Root is a <Teleport>, so class/style passed by parents can't auto-inherit
+// and Vue warns about extraneous attrs. Opt out of auto-inherit and forward
+// $attrs explicitly onto the actual modal container below.
+defineOptions({ inheritAttrs: false })
+
 const close = () => {
   emit('update:modelValue', false)
 }
@@ -42,6 +47,7 @@ const handleTabChange = (val: string | number) => {
     )
       div(
         v-if="modelValue"
+        v-bind="$attrs"
         class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
         :style="{\
           paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))',\

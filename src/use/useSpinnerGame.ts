@@ -216,8 +216,6 @@ const saveLastGameResult = (result: GameResult) => {
   else localStorage.removeItem(LAST_RESULT_KEY)
 }
 
-// ─── Composable ──────────────────────────────────────────────────────────────
-
 export const useSpinnerGame = () => {
   // ── Game Phase ───────────────────────────────────────────────────────────
   const phase: Ref<GamePhase> = ref('idle')

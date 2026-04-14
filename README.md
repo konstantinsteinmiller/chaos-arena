@@ -16,8 +16,8 @@ WIP: [playable demo](https://konstantinsteinmiller.github.io/chaos-arena/)
     - [x] settings button
     - [x] version
     - [x] mute music and sound
-    -
-- [ ] basic gameplay
+
+- [x] basic gameplay
     - [x] basic attack on collision
     - [x] show sparks on collision
     - [x] life bar and counter
@@ -26,8 +26,8 @@ WIP: [playable demo](https://konstantinsteinmiller.github.io/chaos-arena/)
     - [x] fix bounce bug after kill
     - [x] start hint timer with placeholder arrow for pull back cta.
 
-- [ ] Reward system
-    - [ ] wheel spinner for 2x, 3x, 4x and 5x rewards after rewarded videos
+- [x] Reward system
+    - [x] wheel spinner for 2x, 1.5x, 1x and 0.5x rewards after rewarded videos
 
 - [x] OptionsModal
     - [x] music
@@ -42,17 +42,17 @@ WIP: [playable demo](https://konstantinsteinmiller.github.io/chaos-arena/)
 - Build-Toolchain
     - [ ] create Demo version
         - [ ] create Demo build
-    - [ ] build for windows
-        - [ ] exit button for native games
+  - [x] build for windows
+      - [x] exit button for native games
     - [ ] build for android
     - [ ] build for ios
     - [ ] Poki.io launch
     - [ ] Crazy Web games SDK
-        - [ ] pass QA of Crazy Web Games Basic Launch
+        - [x] pass QA of Crazy Web Games Basic Launch
         - [x] add obfuscation for native and crazy build
         - [x] sitelock for crazywebgames domains
-        - [ ] make game launchable
-        - [ ] ads
+        - [x] make game launchable
+        - [x] ads
         - [ ] performance tracking
 
 - [x] complete Translations

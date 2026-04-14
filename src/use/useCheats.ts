@@ -153,7 +153,7 @@ const useCheats = () => {
     'ctrl+shift+alt+p': () => {
       cheatRouletteSignal.value++
       console.warn('[CHEAT] Roulette triggered.')
-    }
+    },
   }
 
   /**
