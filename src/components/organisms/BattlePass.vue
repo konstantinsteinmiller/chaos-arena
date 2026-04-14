@@ -295,6 +295,10 @@ let dragScrollLeft = 0
 let dragMoved = false
 
 const onStripPointerDown = (e: PointerEvent) => {
+  // Touch / pen gestures are handled by the browser's native horizontal
+  // scroll — don't fight it from JS, or the drag dies the moment the
+  // browser claims the gesture and fires pointercancel.
+  if (e.pointerType !== 'mouse') return
   const strip = stripRef.value
   if (!strip) return
   isDragging.value = true
@@ -304,6 +308,7 @@ const onStripPointerDown = (e: PointerEvent) => {
 }
 
 const onStripPointerMove = (e: PointerEvent) => {
+  if (e.pointerType !== 'mouse') return
   if (!isDragging.value || !stripRef.value) return
   const dx = e.clientX - dragStartX
   if (Math.abs(dx) > 3) {
@@ -563,7 +568,11 @@ const onStripPointerUp = (e: PointerEvent) => {
 // scrollable. Matches the visual language of the rest of the HUD.
 .bp-strip
   scrollbar-width: none
-  touch-action: pan-y
+  // Let the browser handle touch scrolling natively on both axes — the
+  // JS drag-to-scroll below is mouse-only. A `pan-y`-only value made the
+  // browser cancel pointer events the moment a finger drifted vertically,
+  // which killed the drag after a few pixels on mobile.
+  touch-action: pan-x pan-y
   user-select: none
 
   &::-webkit-scrollbar

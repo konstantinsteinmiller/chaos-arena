@@ -503,6 +503,16 @@ export const useSpinnerGame = () => {
   const CONTACT_REARM_MS = 50
   const contactTimes = new Map<string, number>()
 
+  // Per-pair hug timer: records when an uninterrupted contact period began.
+  // If a pair stays overlapping for longer than HUG_BREAK_MS the collision
+  // resolver applies a one-off strong counter-impulse to forcibly separate
+  // them — stops two blades from grinding against each other (or a blade
+  // from grinding against a wall/bouncer) and piling up clash SFX, spark
+  // VFX and damage rolls at a rate that tanks the frame time.
+  const HUG_BREAK_MS = 1000
+  const HUG_SEPARATION_IMPULSE = 3.5
+  const hugStartTimes = new Map<string, number>()
+
   // Per-defender crit cooldown — prevents the "rapid bounce-off + chase" loop
   // from triggering crits on every contact while the opponent is still being
   // pushed and has its rear constantly exposed.
@@ -1427,6 +1437,7 @@ export const useSpinnerGame = () => {
     spikyChipCooldowns.clear()
     healerHealCooldowns.clear()
     contactTimes.clear()
+    hugStartTimes.clear()
     damageNumbers.length = 0
     activeSparks.length = 0
     gameOverAt = null
@@ -2291,10 +2302,10 @@ export const useSpinnerGame = () => {
       }
     } else if (arenaType.value === 'shock') {
       // Shock arena: remove 90% of blade speed on wall contact.
-      // 100ms per-blade cooldown prevents zap spam (and the lag it caused)
+      // 250ms per-blade cooldown prevents zap spam (and the lag it caused)
       // when a blade grinds along the wall over multiple frames.
       const now = performance.now()
-      if (now - (blade.lastShockMs ?? 0) >= 100) {
+      if (now - (blade.lastShockMs ?? 0) >= 250) {
         blade.lastShockMs = now
         blade.vx *= 0.1
         blade.vy *= 0.1
@@ -2347,11 +2358,11 @@ export const useSpinnerGame = () => {
       bouncer.flash = 1
       triggerShake('small')
 
-      // Shock arena bouncers also drain 90% speed on impact (same 100ms
+      // Shock arena bouncers also drain 90% speed on impact (same 250ms
       // per-blade cooldown as the wall to avoid zap spam during overlap).
       if (arenaType.value === 'shock') {
         const now = performance.now()
-        if (now - (blade.lastShockMs ?? 0) >= 100) {
+        if (now - (blade.lastShockMs ?? 0) >= 250) {
           blade.lastShockMs = now
           blade.vx *= 0.1
           blade.vy *= 0.1
@@ -2455,6 +2466,28 @@ export const useSpinnerGame = () => {
     const lastContactTs = contactTimes.get(contactKey) ?? 0
     const contactArmed = now_hit - lastContactTs > CONTACT_REARM_MS
     contactTimes.set(contactKey, now_hit)
+
+    // ── Hug-break: force-separate pairs that can't break apart on their own.
+    // When a fresh contact begins, start the hug timer. While the pair stays
+    // in contact the timer keeps running; once they've been hugging longer
+    // than HUG_BREAK_MS, slam a strong counter-impulse along the contact
+    // normal so they actually fly apart, then reset the timer. Without this
+    // a pair that settles into low-speed grinding keeps re-triggering clash
+    // SFX + spark VFX + damage ticks every few frames and tanks the FPS.
+    if (contactArmed) {
+      hugStartTimes.set(contactKey, now_hit)
+    } else {
+      const hugStart = hugStartTimes.get(contactKey) ?? now_hit
+      if (now_hit - hugStart >= HUG_BREAK_MS) {
+        const hnx = dx / dist
+        const hny = dy / dist
+        a.vx -= hnx * HUG_SEPARATION_IMPULSE
+        a.vy -= hny * HUG_SEPARATION_IMPULSE
+        b.vx += hnx * HUG_SEPARATION_IMPULSE
+        b.vy += hny * HUG_SEPARATION_IMPULSE
+        hugStartTimes.set(contactKey, now_hit)
+      }
+    }
 
     // Camera shake only on the first frame of a contact period — otherwise
     // hugging an opponent produces continuous screen jitter.
