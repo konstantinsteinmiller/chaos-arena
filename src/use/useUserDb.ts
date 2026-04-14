@@ -78,7 +78,12 @@ const useUserDb = ({
       // If the result exists in the database (is not undefined)
       // console.log('request.result: ', request.result)
       if (request.result) {
-        userDifficulty.value = request.result.userDifficulty
+        // Preserve the MEDIUM default for first-time players — older user
+        // records may have no userDifficulty field, and reading undefined
+        // here would wipe the default.
+        if (request.result.userDifficulty) {
+          userDifficulty.value = request.result.userDifficulty
+        }
         userSoundVolume.value = request.result.userSoundVolume
         userMusicVolume.value = request.result.userMusicVolume
         userLanguage.value = request.result.userLanguage

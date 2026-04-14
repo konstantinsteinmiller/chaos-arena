@@ -1,4 +1,4 @@
-import { ref, computed, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
 import type {
   SpinnerState,
   SpinnerConfig,
@@ -15,7 +15,8 @@ import { computeStats } from '@/use/useSpinnerConfig'
 import { spinnerModelImgPath } from '@/use/useModels'
 import type { TopPartId } from '@/types/spinner'
 import { isDebug } from '@/use/useMatch.ts'
-import { isMobileLandscape, isMobilePortrait } from '@/use/useUser.ts'
+import { isMobileLandscape, isMobilePortrait, userDifficulty } from '@/use/useUser.ts'
+import { DIFFICULTY } from '@/utils/enums'
 import { useScreenshake } from '@/use/useScreenshake'
 import useSounds from '@/use/useSound'
 import { prependBaseUrl } from '@/utils/function.ts'
@@ -246,6 +247,36 @@ export const useSpinnerGame = () => {
 
   // ── PvP Mode ──────────────────────────────────────────────────────────────
   const pvpMode: Ref<boolean> = ref(false)
+  // Ghost-fight mode (leaderboard rematch). Owned here so difficulty
+  // logic and other game-side flags can branch on campaign vs ghost.
+  const ghostMode: Ref<boolean> = ref(false)
+
+  // ── Difficulty HP Multiplier ──────────────────────────────────────────────
+  // Mirrors createBladeState so both the spawn-time and live-adjustment
+  // paths stay in sync.
+  const getDifficultyHpMult = (): number => {
+    if (userDifficulty.value === DIFFICULTY.HARD) return 1.3
+    if (userDifficulty.value === DIFFICULTY.EASY) return 0.9
+    return 1
+  }
+  // Tracks the multiplier currently baked into every live NPC blade. When
+  // the player changes difficulty mid-game we rescale existing blades
+  // instead of waiting for the next spawn.
+  let appliedDifficultyHpMult = getDifficultyHpMult()
+  watch(userDifficulty, () => {
+    if (pvpMode.value || ghostMode.value) {
+      appliedDifficultyHpMult = 1
+      return
+    }
+    const next = getDifficultyHpMult()
+    const ratio = next / appliedDifficultyHpMult
+    if (ratio === 1) return
+    for (const blade of npcBlades.value) {
+      blade.maxHp *= ratio
+      blade.hp *= ratio
+    }
+    appliedDifficultyHpMult = next
+  })
   // Callback fired when the local player launches a blade — SpinnerArena
   // wires this to send the launch over PeerJS.
   // bladeIndex is the index within playerBlades (not the blade.id).
@@ -422,6 +453,14 @@ export const useSpinnerGame = () => {
 
   const SHOCK_BOLT_LIFE = 675
   const activeShockBolts: ShockBolt[] = []
+
+  // Drops every live battle VFX layer. Used on surrender / forced
+  // game-over so stale shock bolts and sparks don't linger into the
+  // reward screen after physics stops ticking.
+  const clearBattleVfx = () => {
+    activeShockBolts.length = 0
+    activeSparks.length = 0
+  }
 
   const spawnShockBolt = (wallX: number, wallY: number, bladeX: number, bladeY: number) => {
     // Extend endpoint slightly past the blade center along the incoming
@@ -1009,6 +1048,16 @@ export const useSpinnerGame = () => {
     const stats = computeStats(config, config.topLevel ?? 0, config.bottomLevel ?? 0)
     const bossHpMultiplier = isBoss ? 2 : 1
     const boostHpMultiplier = (firstGameBoost && owner === 'player') ? 2 : 1
+    // Campaign-only NPC HP scaling by difficulty: EASY -10%, HARD +30%.
+    // PvP and ghost fights are excluded so both modes stay authoritative.
+    const difficultyHpMultiplier =
+      owner === 'npc' && !pvpMode.value && !ghostMode.value
+        ? getDifficultyHpMult()
+        : 1
+    // Keep the live-rescale watcher's baseline in sync with what we
+    // actually baked into this spawn so a later difficulty change scales
+    // from the correct starting point.
+    if (owner === 'npc') appliedDifficultyHpMult = difficultyHpMultiplier
     // Healer partners are only 20% oversize — per design they're "barely
     // bigger than normal blades". Every other boss keeps the 1.6x hulk
     // radius so the classic solo-boss silhouette still reads as huge.
@@ -1017,7 +1066,7 @@ export const useSpinnerGame = () => {
       radiusMult = config.bossAbility === 'healers' ? HEALER_RADIUS_MULT : 1.6
     }
     const bossRadius = BLADE_RADIUS * radiusMult
-    const finalHp = stats.maxHp * bossHpMultiplier * boostHpMultiplier
+    const finalHp = stats.maxHp * bossHpMultiplier * boostHpMultiplier * difficultyHpMultiplier
     return {
       id: nextBladeId++,
       x, y,
@@ -2082,7 +2131,9 @@ export const useSpinnerGame = () => {
     if (gameResult.value) {
       if (gameOverAt !== null) {
         const elapsed = performance.now() - gameOverAt
-        const vfxDone = activeSparks.length === 0 && damageNumbers.length === 0
+        const vfxDone = activeSparks.length === 0
+          && damageNumbers.length === 0
+          && activeShockBolts.length === 0
         if (vfxDone || elapsed >= GAME_OVER_VFX_MAX_MS) {
           phase.value = 'game_over'
           stopPhysics()
@@ -2239,11 +2290,17 @@ export const useSpinnerGame = () => {
         })
       }
     } else if (arenaType.value === 'shock') {
-      // Shock arena: remove 90% of blade speed on wall contact
-      blade.vx *= 0.1
-      blade.vy *= 0.1
-      blade.hitFlash = HIT_FLASH_FRAMES
-      spawnShockBolt(nx * ARENA_RADIUS, ny * ARENA_RADIUS, blade.x, blade.y)
+      // Shock arena: remove 90% of blade speed on wall contact.
+      // 100ms per-blade cooldown prevents zap spam (and the lag it caused)
+      // when a blade grinds along the wall over multiple frames.
+      const now = performance.now()
+      if (now - (blade.lastShockMs ?? 0) >= 100) {
+        blade.lastShockMs = now
+        blade.vx *= 0.1
+        blade.vy *= 0.1
+        blade.hitFlash = HIT_FLASH_FRAMES
+        spawnShockBolt(nx * ARENA_RADIUS, ny * ARENA_RADIUS, blade.x, blade.y)
+      }
     }
   }
 
@@ -2290,12 +2347,17 @@ export const useSpinnerGame = () => {
       bouncer.flash = 1
       triggerShake('small')
 
-      // Shock arena bouncers also drain 90% speed on impact
+      // Shock arena bouncers also drain 90% speed on impact (same 100ms
+      // per-blade cooldown as the wall to avoid zap spam during overlap).
       if (arenaType.value === 'shock') {
-        blade.vx *= 0.1
-        blade.vy *= 0.1
-        blade.hitFlash = HIT_FLASH_FRAMES
-        spawnShockBolt(bouncer.x + nx * bouncer.radius, bouncer.y + ny * bouncer.radius, blade.x, blade.y)
+        const now = performance.now()
+        if (now - (blade.lastShockMs ?? 0) >= 100) {
+          blade.lastShockMs = now
+          blade.vx *= 0.1
+          blade.vy *= 0.1
+          blade.hitFlash = HIT_FLASH_FRAMES
+          spawnShockBolt(bouncer.x + nx * bouncer.radius, bouncer.y + ny * bouncer.radius, blade.x, blade.y)
+        }
       }
     }
   }
@@ -2916,18 +2978,72 @@ export const useSpinnerGame = () => {
     // Hint animation
     renderHintAnimation(ctx, showHintAnim)
 
-    // Virtual joystick (rendered inside the same transform)
+    // Joystick position is updated here so drag hit-testing stays in sync
+    // with the visible knob, but the actual drawing happens on a separate
+    // overlay canvas (see renderJoystickOverlay) so it can render ABOVE the
+    // HTML stat-card HUD instead of being covered by it.
     if (isJoystickVisible.value && phase.value === 'player_turn') {
-      // Place joystick below-left of the arena, midway between the arena
-      // edge and the bottom of the visible game area.
-      const halfVisibleY = canvasHeight / (2 * scale)
-      const gapBelow = halfVisibleY - ARENA_RADIUS
-      const jcY = ARENA_RADIUS + Math.max(JOYSTICK_RADIUS + 6, gapBelow * 0.5)
-      const jcX = -ARENA_RADIUS * 0.5
-      joystickCenter.value = { x: jcX, y: jcY }
-      renderJoystick(ctx)
+      updateJoystickCenter(canvasWidth, canvasHeight, scale)
     }
 
+    ctx.restore()
+  }
+
+  // Bottom-left corner of the visible canvas, clamped outside the arena.
+  // Pulled out so both the main render (for hit testing) and the overlay
+  // canvas (for drawing) reach the same coordinates.
+  const updateJoystickCenter = (canvasWidth: number, canvasHeight: number, scale: number) => {
+    const halfVisibleX = canvasWidth / (2 * scale)
+    const halfVisibleY = canvasHeight / (2 * scale)
+    const margin = 4
+    let jcX: number
+    let jcY: number
+    // 40px pixel-space margin off the nearest viewport edge on mobile, so
+    // the joystick doesn't hug the phone's bezel.
+    const mobileEdgeMargin = 40 / scale
+    if (isMobilePortrait.value) {
+      // Below the arena — portrait viewports have vertical slack below
+      // the arena circle.
+      jcX = 0
+      jcY = halfVisibleY - JOYSTICK_RADIUS - mobileEdgeMargin
+    } else if (isMobileLandscape.value) {
+      // Left of the arena — landscape viewports have horizontal slack.
+      jcX = -halfVisibleX + JOYSTICK_RADIUS + mobileEdgeMargin
+      jcY = 0
+    } else {
+      // Desktop / tablet: bottom-left corner of the visible canvas,
+      // clamped outside the arena.
+      jcX = -halfVisibleX + JOYSTICK_RADIUS + margin
+      jcY = halfVisibleY - JOYSTICK_RADIUS - margin
+    }
+    const dist = Math.sqrt(jcX * jcX + jcY * jcY)
+    const minDist = ARENA_RADIUS + JOYSTICK_RADIUS + 2
+    if (dist < minDist && dist > 0.01) {
+      const k = minDist / dist
+      jcX *= k
+      jcY *= k
+    }
+    joystickCenter.value = { x: jcX, y: jcY }
+  }
+
+  // Renders the joystick into a dedicated overlay canvas that sits above
+  // the HUD in DOM order, so the bottom-left stat card no longer covers it.
+  const renderJoystickOverlay = (
+    ctx: CanvasRenderingContext2D,
+    canvasWidth: number,
+    canvasHeight: number
+  ) => {
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight)
+    if (!isJoystickVisible.value || phase.value !== 'player_turn') return
+    const centerX = canvasWidth / 2
+    const centerY = canvasHeight / 2
+    const fitSize = Math.min(canvasWidth, canvasHeight)
+    const scale = fitSize / (ARENA_RADIUS * 2 + ARENA_PADDING)
+    updateJoystickCenter(canvasWidth, canvasHeight, scale)
+    ctx.save()
+    ctx.translate(centerX, centerY)
+    ctx.scale(scale, scale)
+    renderJoystick(ctx)
     ctx.restore()
   }
 
@@ -4465,6 +4581,7 @@ export const useSpinnerGame = () => {
 
     initGame,
     startMatch,
+    clearBattleVfx,
     beginDrag,
     updateDrag,
     releaseDrag,
@@ -4474,12 +4591,14 @@ export const useSpinnerGame = () => {
     releaseJoystickDrag,
     isJoystickVisible,
     isJoystickDragging,
+    renderJoystickOverlay,
     startPhysics,
     stopPhysics,
     spawnMeteorShower,
 
     // PvP
     pvpMode,
+    ghostMode,
     launchRemoteBlade,
     setOnLocalLaunch: (cb: ((bladeIndex: number, ax: number, ay: number) => void) | null) => {
       onLocalLaunch = cb

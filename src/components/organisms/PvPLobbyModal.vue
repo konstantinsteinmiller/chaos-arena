@@ -44,8 +44,6 @@ const {
   copyInviteLink,
   sendCrazyGamesInvite,
   leavePvP,
-  copyPvpDebugLog,
-  debugCopied
 } = usePVP()
 
 const { wins, losses, honor } = usePvpStats()
@@ -365,11 +363,6 @@ watch(() => props.isOpen, (open) => {
             class="border-t-transparent w-10 h-10"
           )
           div.text-white.game-text.font-bold {{ status === 'creating' ? t('pvp.creatingLobby') : t('pvp.connecting') }}
-          button.mt-2.cursor-pointer(
-            @click="copyPvpDebugLog"
-            class="px-3 py-1 rounded border text-xs game-text font-bold transition-colors"
-            :class="debugCopied ? 'border-green-400 bg-green-900/40 text-green-300' : 'border-slate-600 bg-slate-800 text-gray-400 hover:text-white hover:border-slate-400'"
-          ) {{ debugCopied ? 'Debug copied!' : 'Copy debug log' }}
 
       //- ── Waiting for Guest ──────────────────────────────────────────────
       template(v-else-if="status === 'waiting'")
@@ -530,11 +523,6 @@ watch(() => props.isOpen, (open) => {
         div.flex.flex-col.items-center.gap-4.py-6
           div.text-red-400.font-bold.game-text(class="text-lg") {{ t('pvp.' + status) }}
           div.text-gray-400.game-text.text-center(class="text-sm") {{ errorMessage }}
-          button.mt-2.cursor-pointer(
-            @click="copyPvpDebugLog"
-            class="px-3 py-1 rounded border text-xs game-text font-bold transition-colors"
-            :class="debugCopied ? 'border-green-400 bg-green-900/40 text-green-300' : 'border-slate-600 bg-slate-800 text-gray-400 hover:text-white hover:border-slate-400'"
-          ) {{ debugCopied ? 'Debug copied!' : 'Copy debug log' }}
 
     //- ── Sticky Footer Actions (always visible) ─────────────────────────
     template(#footer)

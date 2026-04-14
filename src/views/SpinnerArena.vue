@@ -68,6 +68,7 @@ const {
   isDragging,
   initGame,
   startMatch,
+  clearBattleVfx,
   beginDrag,
   updateDrag,
   releaseDrag,
@@ -77,11 +78,13 @@ const {
   releaseJoystickDrag,
   isJoystickVisible,
   isJoystickDragging,
+  renderJoystickOverlay,
   stopPhysics,
   render,
   pixelToGame,
   spawnMeteorShower,
   pvpMode: gamePvpMode,
+  ghostMode,
   launchRemoteBlade,
   setOnLocalLaunch,
   setOnStateHash,
@@ -150,9 +153,14 @@ const lastHonorEarned: Ref<number> = ref(0)
 // ─── Canvas Refs ───────────────────────────────────────────────────────────
 
 const canvasRef: Ref<HTMLCanvasElement | null> = ref(null)
+const joystickCanvasRef: Ref<HTMLCanvasElement | null> = ref(null)
 const canvasSize: Ref<number> = ref(0)
 const canvasWidth: Ref<number> = ref(0)
 const canvasHeight: Ref<number> = ref(0)
+const uiBtnScale = computed(() => Math.min(2, Math.max(1, canvasWidth.value / 1000)))
+// Blade stat cards: same scaling curve as the buttons but capped so the
+// visual size never exceeds 250×350px. Base card is ~85×85px → max ~2.94.
+const uiStatScale = computed(() => Math.min(250 / 85, Math.max(1, canvasWidth.value / 1000)))
 const configModalOpen: Ref<boolean> = ref(false)
 const showOptions: Ref<boolean> = ref(false)
 const coinsAwarded: Ref<boolean> = ref(false)
@@ -167,7 +175,6 @@ const hasOpenedConfig: Ref<boolean> = ref(localStorage.getItem(CONFIG_OPENED_KEY
 // While true, the current match is a ghost battle launched from the
 // leaderboard: rewards are custom, campaign progress does not advance,
 // the StageBadge is hidden, and the arena uses the default theme.
-const ghostMode: Ref<boolean> = ref(false)
 const ghostEnemy: Ref<LeaderboardEntry | null> = ref(null)
 
 // ─── NPC Team from Campaign Stage ─────────────────────────────────────────
@@ -317,6 +324,7 @@ const bladeStats = computed(() =>
 
 const onSurrender = () => {
   stopPhysics()
+  clearBattleVfx()
   stopBattleMusic()
   if (pvpMode.value) {
     // Notify opponent, then force a loss game-over
@@ -334,6 +342,7 @@ const showEnemySurrender = ref(false)
 
 const onRemoteSurrender = () => {
   stopPhysics()
+  clearBattleVfx()
   stopBattleMusic()
   gameResult.value = 'win'
   phase.value = 'game_over'
@@ -443,6 +452,11 @@ const updateCanvasSize = () => {
   canvasSize.value = Math.min(canvasWidth.value, canvasHeight.value)
   canvas.width = canvasWidth.value
   canvas.height = canvasHeight.value
+  const jc = joystickCanvasRef.value
+  if (jc) {
+    jc.width = canvasWidth.value
+    jc.height = canvasHeight.value
+  }
 }
 
 // ─── Bottom-Row Visibility Guard ──────────────────────────────────────────
@@ -765,6 +779,14 @@ const renderLoop = () => {
   if (!ctx) return
 
   render(ctx, canvasWidth.value, canvasHeight.value, showHint.value)
+
+  // Joystick draws to a separate overlay canvas that sits above the HUD,
+  // so the bottom-left stat card no longer covers it.
+  const jc = joystickCanvasRef.value
+  if (jc) {
+    const jctx = jc.getContext('2d')
+    if (jctx) renderJoystickOverlay(jctx, canvasWidth.value, canvasHeight.value)
+  }
   renderRafId = requestAnimationFrame(renderLoop)
 }
 
@@ -918,6 +940,13 @@ onUnmounted(() => {
       class="block touch-none"
       :style="shakeStyle"
     )
+    //- Joystick overlay — sits above the HUD so the stat card never covers
+    //- it. Pointer-events stay on the main canvas; this layer is purely
+    //- visual.
+    canvas(
+      ref="joystickCanvasRef"
+      class="fixed inset-0 pointer-events-none z-[20]"
+    )
 
     //- HUD Overlay
     div.absolute.inset-0.pointer-events-none
@@ -1028,6 +1057,10 @@ onUnmounted(() => {
           :key="bs.id"
           class="blade-stat-card"
           :class="{ 'blade-stat-dead': bs.dead }"
+          :style="{\
+            transform: `scale(${uiStatScale})`,\
+            transformOrigin: idx === 0 ? 'bottom left' : 'bottom right'\
+          }"
         )
           div.blade-stat-label.game-text {{ t('spinner.spinnerLabel', { n: idx + 1 }) }}
           div.blade-stat-grid
@@ -1047,10 +1080,12 @@ onUnmounted(() => {
       //- Bottom-left column: mute → settings → daily/ad/battlepass row
       div(
         v-if="showConfigButton && !showReward && !showConfigSpotlight"
-        class="fixed pointer-events-auto z-50 flex flex-col items-start gap-1"
+        class="ui-stack-bl fixed pointer-events-auto z-50 flex flex-col items-start gap-1"
         :style="{\
           bottom: `calc(0.5rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)`,\
-          left: 'calc(0.5rem + env(safe-area-inset-left, 0px))'\
+          left: 'calc(0.5rem + env(safe-area-inset-left, 0px))',\
+          transform: `scale(${uiBtnScale})`,\
+          transformOrigin: 'bottom left'\
         }"
       )
         FMuteButton
@@ -1074,11 +1109,13 @@ onUnmounted(() => {
       //-   row 2: pvp → leaderboard → team config
       div(
         v-if="showConfigButton && !showReward"
-        class="fixed pointer-events-auto flex flex-col items-end gap-2"
+        class="ui-stack-br fixed pointer-events-auto flex flex-col items-end gap-2"
         :class="showConfigSpotlight ? 'z-[60]' : 'z-50'"
         :style="{\
           bottom: `calc(0.5rem + env(safe-area-inset-bottom, 0px) + ${bottomGapPx}px)`,\
-          right: 'calc(0.5rem + env(safe-area-inset-right, 0px))'\
+          right: 'calc(0.5rem + env(safe-area-inset-right, 0px))',\
+          transform: `scale(${uiBtnScale})`,\
+          transformOrigin: 'bottom right'\
         }"
       )
         //- Row 1: speed switch (hidden during spotlight)

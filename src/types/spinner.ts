@@ -99,6 +99,8 @@ export interface SpinnerState {
   rotation: number
   rotationSpeed: number
   hitFlash: number
+  /** Timestamp of last shock-arena zap; gates re-zap to ≥100ms apart. */
+  lastShockMs?: number
   wallBounceCount: number
   lastHitTime: number
   config: SpinnerConfig

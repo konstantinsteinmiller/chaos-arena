@@ -16,95 +16,9 @@ import { isCrazyGamesFullRelease, isDebug } from '@/use/useMatch'
 
 export const isPvpEnabled = import.meta.env.VITE_APP_PVP_ENABLED === 'true'
 
-// ─── Debug Log ────────────────────────────────────────────────────────
-// Collects timestamped entries at every critical PvP connection point.
-// Can be copied to clipboard from the UI for remote debugging.
-
-const debugLog: string[] = []
-const consoleCapture: string[] = []
-const MAX_DEBUG_ENTRIES = 150
-const MAX_CONSOLE_ENTRIES = 80
-
-// Intercept console.warn / console.error to capture browser-level issues
-// (WebRTC errors, TURN failures, etc.) into the debug clipboard.
-const _origWarn = console.warn
-const _origError = console.error
-console.warn = (...args: any[]) => {
-  _origWarn.apply(console, args)
-  const msg = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')
-  consoleCapture.push(`[WARN] ${msg}`)
-  if (consoleCapture.length > MAX_CONSOLE_ENTRIES) consoleCapture.shift()
-}
-console.error = (...args: any[]) => {
-  _origError.apply(console, args)
-  const msg = args.map(a => {
-    if (a instanceof Error) return `${a.name}: ${a.message}\n${a.stack ?? ''}`
-    return typeof a === 'string' ? a : JSON.stringify(a)
-  }).join(' ')
-  consoleCapture.push(`[ERR] ${msg}`)
-  if (consoleCapture.length > MAX_CONSOLE_ENTRIES) consoleCapture.shift()
-}
-
 const pvpLog = (msg: string) => {
   const ts = new Date().toISOString().slice(11, 23) // HH:mm:ss.SSS
-  const entry = `[${ts}] ${msg}`
-  debugLog.push(entry)
-  if (debugLog.length > MAX_DEBUG_ENTRIES) debugLog.shift()
-  _origWarn.call(console, '[PvP]', entry)
-}
-
-/** Check whether any relay (TURN) candidates were gathered. */
-const hadRelayCandidates = (): boolean =>
-  debugLog.some(e => e.includes('ICE candidate: relay'))
-
-export const debugCopied: Ref<boolean> = ref(false)
-
-export const copyPvpDebugLog = async (): Promise<boolean> => {
-  // Snapshot current RTCPeerConnection stats if available
-  let pcStats = 'n/a'
-  try {
-    const pc: RTCPeerConnection | undefined =
-      (conn as any)?.peerConnection ?? (conn as any)?._peerConnection
-    if (pc) {
-      pcStats = [
-        `iceState=${pc.iceConnectionState}`,
-        `iceGathering=${pc.iceGatheringState}`,
-        `signaling=${pc.signalingState}`,
-        `connState=${pc.connectionState}`,
-        `localCandidates=${pc.localDescription?.sdp?.match(/a=candidate/g)?.length ?? 0}`,
-        `remoteCandidates=${pc.remoteDescription?.sdp?.match(/a=candidate/g)?.length ?? 0}`
-      ].join(' | ')
-    }
-  } catch { /* ignore */
-  }
-
-  const info = [
-    `── PvP Debug Log ──`,
-    `UA: ${navigator.userAgent}`,
-    `URL: ${window.location.href}`,
-    `Time: ${new Date().toISOString()}`,
-    `Status: ${status.value} | Role: ${role.value} | PeerId: ${peerId.value}`,
-    `RemotePeerId: ${remotePeerId.value}`,
-    `PeerOpen: ${peer?.open ?? 'no peer'} | PeerDestroyed: ${peer?.destroyed ?? 'no peer'} | PeerDisconnected: ${peer?.disconnected ?? 'n/a'}`,
-    `ConnOpen: ${conn?.open ?? 'no conn'} | ConnType: ${conn?.type ?? 'n/a'}`,
-    `RTCPeerConnection: ${pcStats}`,
-    `TURN relay candidates: ${hadRelayCandidates() ? 'YES' : 'NONE ⚠️ (all TURN servers may be unreachable)'}`,
-    `Error: ${errorMessage.value || 'none'}`,
-    `──────────────────── PvP Events ────────────────────`,
-    ...debugLog,
-    `──────────────────── Console (warn/error) ──────────`,
-    ...(consoleCapture.length > 0 ? consoleCapture : ['(none)'])
-  ].join('\n')
-  try {
-    await navigator.clipboard.writeText(info)
-    debugCopied.value = true
-    setTimeout(() => {
-      debugCopied.value = false
-    }, 2000)
-    return true
-  } catch {
-    return false
-  }
+  console.warn('[PvP]', `[${ts}] ${msg}`)
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -465,7 +379,7 @@ const setupConnection = (connection: DataConnection) => {
         pc.addEventListener('iceconnectionstatechange', () => {
           pvpLog(`ICE state: ${pc.iceConnectionState}`)
           if (pc.iceConnectionState === 'failed') {
-            pvpLog(`ICE FAILED — relay candidates: ${hadRelayCandidates() ? 'yes' : 'NONE (TURN servers unreachable)'}`)
+            pvpLog('ICE FAILED')
             // Dump candidate pair stats for diagnosis
             pc.getStats().then(stats => {
               stats.forEach(report => {
@@ -483,9 +397,6 @@ const setupConnection = (connection: DataConnection) => {
         })
         pc.addEventListener('icegatheringstatechange', () => {
           pvpLog(`ICE gathering: ${pc.iceGatheringState}`)
-          if (pc.iceGatheringState === 'complete' && !hadRelayCandidates()) {
-            pvpLog('⚠️ ICE gathering complete with NO relay candidates — all TURN servers failed')
-          }
         })
         pc.addEventListener('icecandidate', (e) => {
           if (e.candidate) {
@@ -879,10 +790,7 @@ const usePVP = () => {
     sendCrazyGamesInvite,
     checkInviteFromUrl,
     returnToLobby,
-    leavePvP,
-    // Debug
-    copyPvpDebugLog,
-    debugCopied
+    leavePvP
   }
 }
 
