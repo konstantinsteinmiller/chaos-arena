@@ -437,6 +437,10 @@ export const useSpinnerGame = () => {
   // Hard cap so we never stall forever waiting on VFX.
   const GAME_OVER_VFX_MAX_MS = 1200
 
+  // ── Background tile pattern ─────────────────────────────────────────────
+  const bgTileImage = preloadImage(prependBaseUrl('images/bg/bg-tile_400x400.webp'))
+  let bgTilePattern: CanvasPattern | null = null
+
   // ── Spark VFX ───────────────────────────────────────────────────────────
   const sparkImage = preloadImage(prependBaseUrl('images/vfx/big-spark_1280x256.webp'))
   const activeSparks: SpritesheetAnimation[] = []
@@ -3001,7 +3005,11 @@ export const useSpinnerGame = () => {
     const fitSize = Math.min(canvasWidth, canvasHeight)
     const scale = fitSize / (ARENA_RADIUS * 2 + ARENA_PADDING)
 
-    ctx.fillStyle = '#0d1117'
+    // Tiled background — create pattern lazily once the image is loaded
+    if (!bgTilePattern && bgTileImage.complete && bgTileImage.naturalWidth > 0) {
+      bgTilePattern = ctx.createPattern(bgTileImage, 'repeat')
+    }
+    ctx.fillStyle = bgTilePattern ?? '#0d1117'
     ctx.fillRect(0, 0, canvasWidth, canvasHeight)
 
     ctx.save()
