@@ -2695,6 +2695,7 @@ export const useSpinnerGame = () => {
         }
         let defMul = aCrit ? 1 : bStats.defenseMultiplier
         if (a.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.25
+        else if (a.config.topPartId === 'star') defMul = 1 + (defMul - 1) * 0.75
         const atkMul = aCrit ? 1.25 : 1
         dmgAtoB = (closingSpeed * aStats.damageMultiplier * atkMul * aStats.totalWeight)
           / (bStats.totalWeight * defMul)
@@ -2714,6 +2715,7 @@ export const useSpinnerGame = () => {
         }
         let defMul = bCrit ? 1 : aStats.defenseMultiplier
         if (b.config.topPartId === 'piercer') defMul = 1 + (defMul - 1) * 0.25
+        else if (b.config.topPartId === 'star') defMul = 1 + (defMul - 1) * 0.75
         const atkMul = bCrit ? 1.25 : 1
         dmgBtoA = (closingSpeed * bStats.damageMultiplier * atkMul * bStats.totalWeight)
           / (aStats.totalWeight * defMul)

@@ -675,7 +675,7 @@ export const STAGES: Stage[] = Array.from(
 
 /** Per-level bonus for each top part (leans into the part's identity) */
 export const TOP_UPGRADE_BONUS: Record<TopPartId, { damage: number; defense: number; hp: number }> = {
-  star: { damage: 0.12, defense: 0.03, hp: 1 },  // glass cannon
+  star: { damage: 0.16, defense: 0.03, hp: 1 },  // glass cannon
   triangle: { damage: 0.08, defense: 0.05, hp: 2 },  // aggressive balanced
   round: { damage: 0.04, defense: 0.08, hp: 4 },  // defensive
   quadratic: { damage: 0.06, defense: 0.06, hp: 3 },  // true balanced
@@ -685,7 +685,7 @@ export const TOP_UPGRADE_BONUS: Record<TopPartId, { damage: number; defense: num
 
 /** Per-level bonus for each bottom part */
 export const BOTTOM_UPGRADE_BONUS: Record<BottomPartId, { speed: number; decay: number; hp: number }> = {
-  speedy: { speed: 0.06, decay: 0.00015, hp: 1 },  // leans into speed
+  speedy: { speed: 0.09, decay: 0.00015, hp: 1 },  // leans into speed
   tanky: { speed: 0.02, decay: 0.00020, hp: 4 },  // leans into survival
   balanced: { speed: 0.04, decay: 0.00018, hp: 2 }   // balanced
 }
