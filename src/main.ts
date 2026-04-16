@@ -12,13 +12,21 @@ import {
 import { GAME_USER_LANGUAGE } from '@/utils/constants.ts'
 import { LANGUAGES } from '@/utils/enums'
 import { initCrazyGames, crazyLocale } from '@/use/useCrazyGames'
-import useUser from '@/use/useUser'
+import useUser, { isCrazyWeb, isWaveDash } from '@/use/useUser'
+import { isDebug } from '@/use/useMatch.ts'
 
 const bootstrap = async () => {
-  // CrazyGames SDK must initialize *before* App (and its transitive module
-  // graph) loads — several composables read from localStorage at module
-  // load time, and we want them to see SDK-hydrated values.
-  await initCrazyGames()
+  // Platform SDK init — must happen before App loads.
+  if (isCrazyWeb) {
+    await initCrazyGames()
+  } else if (isWaveDash) {
+    try {
+      const sdk = await (window as any).WavedashJS
+      if (sdk) await sdk.init({ debug: isDebug.value })
+    } catch (e) {
+      console.warn('[Wavedash] SDK init failed:', e)
+    }
+  }
 
   // If CrazyGames reported a supported player locale, persist it as the
   // session hint so resolveInitialLocale picks it up below and every
@@ -108,6 +116,19 @@ const bootstrap = async () => {
   app.use(i18n)
 
   app.mount('#app')
+
+  // Signal to Wavedash that the game is fully loaded and ready
+  if (isWaveDash) {
+    try {
+      const sdk = await (window as any).WavedashJS
+      if (sdk) {
+        sdk.updateLoadProgressZeroToOne?.(1)
+        sdk.readyForEvents?.()
+      }
+    } catch (e) {
+      console.warn('[Wavedash] ready signal failed:', e)
+    }
+  }
 }
 
 bootstrap()

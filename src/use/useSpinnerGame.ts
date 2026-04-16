@@ -441,6 +441,22 @@ export const useSpinnerGame = () => {
   const sparkImage = preloadImage(prependBaseUrl('images/vfx/big-spark_1280x256.webp'))
   const activeSparks: SpritesheetAnimation[] = []
 
+  // ── Death explosion VFX ────────────────────────────────────────────────
+  const explosionImage = preloadImage(prependBaseUrl('images/vfx/explosion_2080x160.webp'))
+  const EXPLOSION_FRAMES = 13
+  const EXPLOSION_FW = 160
+  const EXPLOSION_FH = 160
+  const EXPLOSION_FRAME_DURATION = 50 // ms per frame
+  const activeExplosions: SpritesheetAnimation[] = []
+
+  const spawnExplosion = (x: number, y: number, radius: number) => {
+    const scale = (radius * 2.5) / EXPLOSION_FW
+    activeExplosions.push(createSpritesheetAnim(
+      explosionImage, x, y,
+      EXPLOSION_FRAMES, EXPLOSION_FRAME_DURATION, EXPLOSION_FW, EXPLOSION_FH, scale, false
+    ))
+  }
+
   // ── Shock-wall lightning bolt VFX ──────────────────────────────────────
   interface ShockBolt {
     x0: number;
@@ -461,6 +477,7 @@ export const useSpinnerGame = () => {
   const clearBattleVfx = () => {
     activeShockBolts.length = 0
     activeSparks.length = 0
+    activeExplosions.length = 0
   }
 
   const MAX_ACTIVE_VFX = isFirefox ? 2 : 10
@@ -1250,7 +1267,10 @@ export const useSpinnerGame = () => {
     target.hp = Math.max(0, target.hp - dmg)
     target.hitFlash = HIT_FLASH_FRAMES
     spawnDamageNumber(cx, cy, dmg, sourceOwner, isCrit)
-    if (target.hp <= 0) killed = true
+    if (target.hp <= 0) {
+      killed = true
+      spawnExplosion(target.x, target.y, target.radius)
+    }
 
     // Ghost link: any damage taken is mirrored 1:1 to the linked halves.
     // Mirror is non-recursive (we don't re-mirror back to the source) to
@@ -1265,7 +1285,10 @@ export const useSpinnerGame = () => {
         // Mirrored numbers render at the linked blade's location so the
         // player sees the ghost-link is real.
         spawnDamageNumber(linked.x, linked.y, dmg, sourceOwner, false)
-        if (linked.hp <= 0) killed = true
+        if (linked.hp <= 0) {
+          killed = true
+          spawnExplosion(linked.x, linked.y, linked.radius)
+        }
       }
     }
     return killed
@@ -1477,6 +1500,7 @@ export const useSpinnerGame = () => {
     hugStartTimes.clear()
     damageNumbers.length = 0
     activeSparks.length = 0
+    activeExplosions.length = 0
     gameOverAt = null
 
     // ── Powerups ──────────────────────────────────────────────────────────
@@ -2158,6 +2182,13 @@ export const useSpinnerGame = () => {
       }
     }
 
+    // Update death explosions (remove finished ones)
+    for (let i = activeExplosions.length - 1; i >= 0; i--) {
+      if (updateSpritesheetAnim(activeExplosions[i]!, 16)) {
+        activeExplosions.splice(i, 1)
+      }
+    }
+
     // Update shock-wall lightning bolts
     for (let i = activeShockBolts.length - 1; i >= 0; i--) {
       activeShockBolts[i]!.life -= 16
@@ -2189,6 +2220,7 @@ export const useSpinnerGame = () => {
         const vfxDone = activeSparks.length === 0
           && damageNumbers.length === 0
           && activeShockBolts.length === 0
+          && activeExplosions.length === 0
         if (vfxDone || elapsed >= GAME_OVER_VFX_MAX_MS) {
           phase.value = 'game_over'
           stopPhysics()
@@ -3000,6 +3032,11 @@ export const useSpinnerGame = () => {
     // Spark VFX
     for (const spark of activeSparks) {
       renderSpritesheetAnim(ctx, spark)
+    }
+
+    // Death explosions
+    for (const explosion of activeExplosions) {
+      renderSpritesheetAnim(ctx, explosion)
     }
 
     // Shock-wall lightning bolts

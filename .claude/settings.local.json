@@ -40,7 +40,11 @@
       "Bash(wc -l src/i18n/*.ts)",
       "Bash(npx tsx:*)",
       "Bash(du -b src/i18n/locales/*.ts src/i18n/translations.ts src/i18n/stageTranslations.ts src/i18n/campaign.ts)",
-      "Bash(npx cross-env:*)"
+      "Bash(npx cross-env:*)",
+      "WebFetch(domain:docs.wavedash.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

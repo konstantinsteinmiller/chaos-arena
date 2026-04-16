@@ -164,7 +164,8 @@ const useSounds = () => {
     // Clamp to [0,1] — Firefox throws DOMException if volume is NaN or out of range
     // (can happen when userSoundVolume hasn't loaded from IndexedDB yet).
     audio.volume = Math.max(0, Math.min(1, (userSoundVolume.value ?? 0.7) * ratio))
-    audio.play().catch(e => console.warn('SFX play blocked:', e))
+    audio.play().catch(e => {/*console.warn('SFX play blocked:', e)*/
+    })
     return audio
   }
 

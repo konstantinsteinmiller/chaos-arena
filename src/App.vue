@@ -2,7 +2,7 @@
 import { RouterView } from 'vue-router'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { isCrazyWeb, orientation } from '@/use/useUser'
+import { isCrazyWeb, isWaveDash, orientation } from '@/use/useUser'
 import { mobileCheck } from '@/utils/function'
 import { useMusic } from '@/use/useSound'
 import { useExtensionGuard } from '@/use/useExtensionGuard'
@@ -103,17 +103,25 @@ function isCrazyGamesUrl() {
   return idx !== -1 && idx >= parts.length - 3
 }
 
-const allowedToShow = computed(() => (isCrazyWeb && isCrazyGamesUrl()) || !isCrazyWeb)
+function isWaveDashUrl() {
+  const hostname = window.location.hostname
+  const parts = hostname.split('.')
+  const idx = parts.indexOf('wavedash')
+  return idx !== -1 && idx >= parts.length - 3
+}
+
+const allowedToShowOnCrazyGames = computed(() => (isCrazyWeb && isCrazyGamesUrl()) || !isCrazyWeb)
+const allowedToShowOnWaveDash = computed(() => (isWaveDash && isWaveDashUrl()) || !isWaveDash)
 </script>
 
 <template lang="pug">
-  div(v-if="allowedToShow" id="app-root" class="h-screen h-dvh w-screen app-container root-protection game-ui-immune")
+  div(v-if="allowedToShowOnCrazyGames || allowedToShowOnWaveDash" id="app-root" class="h-screen h-dvh w-screen app-container root-protection game-ui-immune")
     FLogoProgress
     RouterView
 
-  div.relative.w-full.h-full(v-else-if="isCrazyWeb")
+  div.relative.w-full.h-full(v-else-if="isCrazyWeb || isWaveDash")
     h1.absolute(class="left-1/2 -translate-x-[50%] top-1/2 -translate-y-[50%] text-3xl") {{ t('crazyGamesOnly') }}
-      span.ml-2.text-amber-500 CrazyGames.com
+      span.ml-2.text-amber-500 {{ isWaveDash ? 'wavedash.com':  isCrazyWeb ? 'crazygames.com' : ''}}
 </template>
 
 <style lang="sass">

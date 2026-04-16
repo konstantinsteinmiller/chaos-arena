@@ -17,6 +17,7 @@ import { isCrazyGamesFullRelease, isDebug } from '@/use/useMatch'
 export const isPvpEnabled = import.meta.env.VITE_APP_PVP_ENABLED === 'true'
 
 const pvpLog = (msg: string) => {
+  if (!isDebug.value || !isPvpEnabled) return
   const ts = new Date().toISOString().slice(11, 23) // HH:mm:ss.SSS
   console.warn('[PvP]', `[${ts}] ${msg}`)
 }
