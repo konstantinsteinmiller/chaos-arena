@@ -63,7 +63,7 @@ export default defineConfig(({ mode, command }) => {
       name: 'strip-crazygames-sdk',
       transformIndexHtml(html: string) {
         return html.replace(
-          /<!--.*?Load the SDK.*?-->\s*<script[^>]*sdk\.crazygames\.com[^>]*><\/script>\s*/s,
+          /<!-- Load the SDK before your game code -->\s*<script[^>]*sdk\.crazygames\.com[^>]*><\/script>\s*/,
           ''
         )
       }

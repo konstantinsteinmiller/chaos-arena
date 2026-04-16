@@ -158,7 +158,10 @@ div[style*="conic-gradient"]
   position: fixed
   inset: 0
   z-index: 150
-  background: #0d1117
+  background-color: #0d1117
+  background-image: url('/images/bg/bg-tile_400x400.webp')
+  background-repeat: repeat
+  background-size: 400px 400px
 // No pointer events so nothing underneath is accidentally clickable anyway
 // (there's nothing interactive rendered yet during initial load)
 
