@@ -66,15 +66,16 @@ const chestRef = ref<HTMLElement | null>(null)
 
 const collectChest = () => {
   if (!chestReady.value) return
+  // Set cooldown FIRST so a thrown error can't leave the chest infinitely collectable
+  chestReadyAt.value = Date.now() + CHEST_COOLDOWN_MS
+  localStorage.setItem(CHEST_KEY, chestReadyAt.value.toString())
+  updateChestTimer()
   addCoins(CHEST_REWARD)
   const { playSound } = useSounds()
   playSound('happy')
   if (chestRef.value && props.targetEl) {
     spawnCoinExplosion({ sourceEl: chestRef.value, targetEl: props.targetEl })
   }
-  chestReadyAt.value = Date.now() + CHEST_COOLDOWN_MS
-  localStorage.setItem(CHEST_KEY, chestReadyAt.value.toString())
-  updateChestTimer()
 }
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────

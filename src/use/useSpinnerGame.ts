@@ -26,6 +26,8 @@ import { drawLightningBolt } from '@/utils/lightning'
 const { triggerShake } = useScreenshake()
 const { playSound } = useSounds()
 
+const isFirefox = /firefox/i.test(navigator.userAgent)
+
 // ─── Physics Constants ───────────────────────────────────────────────────────
 
 export const ARENA_RADIUS = 200
@@ -461,7 +463,7 @@ export const useSpinnerGame = () => {
     activeSparks.length = 0
   }
 
-  const MAX_ACTIVE_VFX = 10
+  const MAX_ACTIVE_VFX = isFirefox ? 2 : 10
   const spawnShockBolt = (wallX: number, wallY: number, bladeX: number, bladeY: number) => {
     if (activeShockBolts.length >= MAX_ACTIVE_VFX) return
     // Extend endpoint slightly past the blade center along the incoming
@@ -579,10 +581,12 @@ export const useSpinnerGame = () => {
       // Always record position to keep path continuous
       pts.push({ x: blade.x, y: blade.y, speed: spd, time: now })
 
-      // Prune expired points
-      while (pts.length > 0 && now - pts[0]!.time > TRAIL_DURATION) {
-        pts.shift()
+      // Prune expired points (batch splice instead of repeated shift)
+      let pruneCount = 0
+      while (pruneCount < pts.length && now - pts[pruneCount]!.time > TRAIL_DURATION) {
+        pruneCount++
       }
+      if (pruneCount > 0) pts.splice(0, pruneCount)
     }
   }
 
@@ -650,6 +654,7 @@ export const useSpinnerGame = () => {
       // Emit 1-2 cloud particles per frame when moving
       const count = spd > 3 ? 2 : 1
       for (let i = 0; i < count; i++) {
+        if (cloudParticles.length >= 120) break
         const angle = Math.random() * Math.PI * 2
         const drift = 0.2 + Math.random() * 0.3
         const maxLife = 400 + Math.random() * 300
@@ -667,8 +672,9 @@ export const useSpinnerGame = () => {
         })
       }
     }
-    // Update cloud particles
-    for (let i = cloudParticles.length - 1; i >= 0; i--) {
+    // Update cloud particles (compact dead entries in-place)
+    let cloudWrite = 0
+    for (let i = 0; i < cloudParticles.length; i++) {
       const p = cloudParticles[i]!
       p.x += p.vx
       p.y += p.vy
@@ -680,14 +686,16 @@ export const useSpinnerGame = () => {
         p.frameTick -= SMOKE_FRAME_MS
         if (p.frame < SMOKE_FRAMES - 1) p.frame++
       }
-      if (p.life <= 0) cloudParticles.splice(i, 1)
+      if (p.life > 0) cloudParticles[cloudWrite++] = p
     }
+    cloudParticles.length = cloudWrite
 
     // Boulder ground decals
     for (const blade of blades) {
       if (blade.hp <= 0) continue
       const spd = speed(blade)
       if ((blade.config.modelId !== 'boulder' && blade.config.modelId !== 'diamond') || spd < 1.0) continue
+      if (groundDecals.length >= 80) break
       groundDecals.push({
         x: blade.x, y: blade.y,
         size: blade.radius * (0.6 + spd * 0.04),
@@ -695,10 +703,12 @@ export const useSpinnerGame = () => {
         rotation: Math.random() * Math.PI * 2
       })
     }
-    // Prune old decals
-    while (groundDecals.length > 0 && now - groundDecals[0]!.time > GROUND_DECAL_DURATION) {
-      groundDecals.shift()
+    // Prune old decals (batch splice instead of repeated shift)
+    let decalPrune = 0
+    while (decalPrune < groundDecals.length && now - groundDecals[decalPrune]!.time > GROUND_DECAL_DURATION) {
+      decalPrune++
     }
+    if (decalPrune > 0) groundDecals.splice(0, decalPrune)
 
     // Sandstorm trail particles — small grains scattered behind the blade
     for (const blade of blades) {
@@ -707,6 +717,7 @@ export const useSpinnerGame = () => {
       if (spd < 0.5) continue
       const count = spd > 3 ? 3 : spd > 1.5 ? 2 : 1
       for (let i = 0; i < count; i++) {
+        if (sandGrains.length >= 150) break
         const angle = Math.random() * Math.PI * 2
         const drift = 0.15 + Math.random() * 0.25
         const maxLife = 350 + Math.random() * 250
@@ -723,16 +734,18 @@ export const useSpinnerGame = () => {
         })
       }
     }
-    // Update sand grains
-    for (let i = sandGrains.length - 1; i >= 0; i--) {
+    // Update sand grains (compact dead entries in-place)
+    let sandWrite = 0
+    for (let i = 0; i < sandGrains.length; i++) {
       const g = sandGrains[i]!
       g.x += g.vx
       g.y += g.vy
       g.vy += 0.003 // slight downward gravity
       g.life -= 16
       g.size *= 0.998 // shrink slowly
-      if (g.life <= 0) sandGrains.splice(i, 1)
+      if (g.life > 0) sandGrains[sandWrite++] = g
     }
+    sandGrains.length = sandWrite
   }
 
   const renderCloudParticles = (ctx: CanvasRenderingContext2D) => {
@@ -823,6 +836,7 @@ export const useSpinnerGame = () => {
   }
 
   const spawnPowerupFloat = (x: number, y: number, stat: PowerupStat) => {
+    if (powerupFloats.length >= 25) return
     powerupFloats.push({
       x,
       y,
@@ -834,12 +848,14 @@ export const useSpinnerGame = () => {
   }
 
   const updatePowerupFloats = (dt: number) => {
-    for (let i = powerupFloats.length - 1; i >= 0; i--) {
+    let w = 0
+    for (let i = 0; i < powerupFloats.length; i++) {
       const pf = powerupFloats[i]!
       pf.y += pf.vy * dt
       pf.life -= dt
-      if (pf.life <= 0) powerupFloats.splice(i, 1)
+      if (pf.life > 0) powerupFloats[w++] = pf
     }
+    powerupFloats.length = w
   }
 
   const renderPowerupFloats = (ctx: CanvasRenderingContext2D) => {
@@ -901,6 +917,7 @@ export const useSpinnerGame = () => {
     const angle = baseAngle + (Math.random() - 0.5) * spread
     const speed = 0.06 + Math.random() * 0.03
 
+    if (damageNumbers.length >= 60) return
     damageNumbers.push({
       x, y,
       vx: Math.cos(angle) * speed,
@@ -914,16 +931,20 @@ export const useSpinnerGame = () => {
   }
 
   const updateDamageNumbers = (dt: number) => {
-    for (let i = damageNumbers.length - 1; i >= 0; i--) {
+    let w = 0
+    for (let i = 0; i < damageNumbers.length; i++) {
       const dn = damageNumbers[i]!
       dn.x += dn.vx * dt
       dn.y += dn.vy * dt
       dn.life -= dt
-      if (dn.life <= 0) damageNumbers.splice(i, 1)
+      if (dn.life > 0) damageNumbers[w++] = dn
     }
+    damageNumbers.length = w
   }
 
   const renderDamageNumbers = (ctx: CanvasRenderingContext2D) => {
+    const now = performance.now()
+    const critPulse = 0.5 + 0.5 * Math.sin(now * 0.01)
     for (const dn of damageNumbers) {
       const alpha = Math.max(0, dn.life / dn.maxLife)
       const baseScale = 0.8 + 0.4 * (1 - alpha) // slightly grow as they fade
@@ -932,16 +953,17 @@ export const useSpinnerGame = () => {
 
       ctx.save()
       ctx.globalAlpha = alpha
-      ctx.font = `bold ${20 * scale}px Arial`
+      ctx.font = `bold ${Math.round(20 * scale)}px Arial`
       ctx.textAlign = dn.comboText ? 'left' : 'center'
       ctx.textBaseline = 'middle'
 
       // Crit: dark orange pulsating aura
       if (dn.isCrit) {
-        const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.01)
-        const auraRadius = 8 + pulse * 6
-        ctx.shadowColor = '#cc6600'
-        ctx.shadowBlur = auraRadius
+        if (!isFirefox) {
+          const auraRadius = 8 + critPulse * 6
+          ctx.shadowColor = '#cc6600'
+          ctx.shadowBlur = auraRadius
+        }
         ctx.strokeStyle = '#000000'
         ctx.lineWidth = 4
         ctx.lineJoin = 'round'
@@ -1000,7 +1022,13 @@ export const useSpinnerGame = () => {
 
   let firstGameBoost = false
 
+  // Per-frame stats cache — cleared once per physics tick so statsFor()
+  // never recomputes the same blade twice in one frame.
+  const _statsCache = new Map<number, SpinnerStats>()
+
   const statsFor = (blade: SpinnerState): SpinnerStats => {
+    const cached = _statsCache.get(blade.id)
+    if (cached) return cached
     const stats = computeStats(blade.config, blade.config.topLevel ?? 0, blade.config.bottomLevel ?? 0)
     let dmg = stats.damageMultiplier
     let def = stats.defenseMultiplier
@@ -1033,19 +1061,25 @@ export const useSpinnerGame = () => {
       if (buffs.defense) def *= buffs.defense
       if (buffs.speed) spd *= buffs.speed
     }
+    let result: SpinnerStats
     if (
       dmg === stats.damageMultiplier
       && def === stats.defenseMultiplier
       && spd === stats.speedMultiplier
       && weightMul === 1
-    ) return stats
-    return {
-      ...stats,
-      damageMultiplier: dmg,
-      defenseMultiplier: def,
-      speedMultiplier: spd,
-      totalWeight: stats.totalWeight * weightMul
+    ) {
+      result = stats
+    } else {
+      result = {
+        ...stats,
+        damageMultiplier: dmg,
+        defenseMultiplier: def,
+        speedMultiplier: spd,
+        totalWeight: stats.totalWeight * weightMul
+      }
     }
+    _statsCache.set(blade.id, result)
+    return result
   }
 
   // ─── Factory ─────────────────────────────────────────────────────────────
@@ -1437,6 +1471,8 @@ export const useSpinnerGame = () => {
     lastCritAt.clear()
     spikyChipCooldowns.clear()
     healerHealCooldowns.clear()
+    sparkCooldowns.clear()
+    clashSoundCooldowns.clear()
     contactTimes.clear()
     hugStartTimes.clear()
     damageNumbers.length = 0
@@ -1586,8 +1622,10 @@ export const useSpinnerGame = () => {
   }
 
   const updateMeteorParticles = () => {
-    const alive: MeteorParticle[] = []
-    for (const p of meteorParticles.value) {
+    const particles = meteorParticles.value
+    let w = 0
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i]!
       p.life--
       if (p.life <= 0) continue
       // Only move once the delay has elapsed (life <= maxLife)
@@ -1600,9 +1638,11 @@ export const useSpinnerGame = () => {
           p.vy += (p.y / dist) * 0.02
         }
       }
-      alive.push(p)
+      particles[w++] = p
     }
-    meteorParticles.value = alive
+    // Reassign .value to trigger Vue reactivity (in-place .length mutation
+    // on a ref'd array may not notify watchers)
+    meteorParticles.value = particles.slice(0, w)
   }
 
   // ─── Player Interaction ──────────────────────────────────────────────────
@@ -1942,6 +1982,9 @@ export const useSpinnerGame = () => {
   // ─── Physics ─────────────────────────────────────────────────────────────
 
   const updatePhysics = () => {
+    // Flush per-frame statsFor cache
+    _statsCache.clear()
+
     if (pvpMode.value) pvpTickCount++
     // Meteor shower phase
     if (phase.value === 'meteor_intro') {
@@ -2849,14 +2892,17 @@ export const useSpinnerGame = () => {
     const lastClash = clashSoundCooldowns.get(pairKey) ?? 0
     if (now - lastClash >= CLASH_SOUND_COOLDOWN_MS && activeClashSounds < MAX_ACTIVE_VFX) {
       const idx = Math.floor(Math.random() * 5) + 1
-      const audio = playSound(`clash-${idx}`)
-      if (audio) {
-        activeClashSounds++
-        const release = () => {
-          activeClashSounds = Math.max(0, activeClashSounds - 1)
+      try {
+        const audio = playSound(`clash-${idx}`)
+        if (audio) {
+          activeClashSounds++
+          const release = () => {
+            activeClashSounds = Math.max(0, activeClashSounds - 1)
+          }
+          audio.addEventListener('ended', release, { once: true })
+          audio.addEventListener('error', release, { once: true })
         }
-        audio.addEventListener('ended', release, { once: true })
-        audio.addEventListener('error', release, { once: true })
+      } catch { /* sound is best-effort */
       }
       clashSoundCooldowns.set(pairKey, now)
     }
@@ -2877,22 +2923,26 @@ export const useSpinnerGame = () => {
     lastPhysicsTime = performance.now()
 
     const loop = (now: number) => {
-      const steps = simSpeed.value
+      try {
+        const steps = simSpeed.value
 
-      if (pvpMode.value) {
-        // Fixed-step: accumulate real elapsed time and consume in fixed chunks
-        physicsAccumulator += now - lastPhysicsTime
-        lastPhysicsTime = now
-        // Cap to avoid spiral-of-death if tab was backgrounded
-        if (physicsAccumulator > FIXED_STEP_MS * 10) physicsAccumulator = FIXED_STEP_MS * 10
-        while (physicsAccumulator >= FIXED_STEP_MS) {
+        if (pvpMode.value) {
+          // Fixed-step: accumulate real elapsed time and consume in fixed chunks
+          physicsAccumulator += now - lastPhysicsTime
+          lastPhysicsTime = now
+          // Cap to avoid spiral-of-death if tab was backgrounded
+          if (physicsAccumulator > FIXED_STEP_MS * 10) physicsAccumulator = FIXED_STEP_MS * 10
+          while (physicsAccumulator >= FIXED_STEP_MS) {
+            for (let i = 0; i < steps; i++) updatePhysics()
+            physicsAccumulator -= FIXED_STEP_MS
+          }
+        } else {
+          // Legacy: one tick per rendered frame (frame-rate-dependent but
+          // only affects single-player where it doesn't matter)
           for (let i = 0; i < steps; i++) updatePhysics()
-          physicsAccumulator -= FIXED_STEP_MS
         }
-      } else {
-        // Legacy: one tick per rendered frame (frame-rate-dependent but
-        // only affects single-player where it doesn't matter)
-        for (let i = 0; i < steps; i++) updatePhysics()
+      } catch (e) {
+        console.error('[physics loop]', e)
       }
 
       if (physicsRafId !== null) {
@@ -2953,7 +3003,18 @@ export const useSpinnerGame = () => {
     // Shock-wall lightning bolts
     for (const bolt of activeShockBolts) {
       const t = bolt.life / bolt.maxLife
-      drawLightningBolt(ctx, bolt.x0, bolt.y0, bolt.x1, bolt.y1, {
+      drawLightningBolt(ctx, bolt.x0, bolt.y0, bolt.x1, bolt.y1, isFirefox ? {
+        jitter: 8,
+        segments: 4,
+        branchChance: 0.2,
+        branchLength: 0.3,
+        maxDepth: 1,
+        color: '#ffaaff',
+        glowColor: '#cc44ff',
+        lineWidth: 2.6,
+        glowWidth: 9,
+        alpha: t * 0.95
+      } : {
         jitter: 11,
         segments: 8,
         branchChance: 0.55,
@@ -3136,32 +3197,35 @@ export const useSpinnerGame = () => {
             ctx.lineJoin = 'round'
             ctx.lineWidth = layer.widthBase * 0.6 + layer.widthSpeed * 0.4
 
-            for (let i = 1; i < pts.length; i++) {
-              const p0 = pts[i - 1]!
-              const p1 = pts[i]!
+            // Batch segments to reduce stroke() calls
+            const BATCH = 4
+            for (let i = 1; i < pts.length; i += BATCH) {
+              const end = Math.min(i + BATCH, pts.length)
+              const mid = Math.min(i + (BATCH >> 1), pts.length - 1)
+              const pMid = pts[mid]!
+              const tMid = timeSpan > 0 ? (pMid.time - oldestTime) / timeSpan : 1
+              const ageMid = now - pMid.time
+              const ageFadeMid = Math.max(0, 1 - ageMid / TRAIL_DURATION)
+              const alphaMid = ageFadeMid * layer.alphaScale
+              if (alphaMid <= 0.01) continue
 
-              const t = timeSpan > 0 ? (p1.time - oldestTime) / timeSpan : 1
-              const age = now - p1.time
-              const ageFade = Math.max(0, 1 - age / TRAIL_DURATION)
-              const alpha = ageFade * layer.alphaScale
-              if (alpha <= 0.01) continue
-
-              // Fade from color (t=1, near blade) to white (t=0, tail)
-              const r = Math.round(255 + (cr - 255) * t)
-              const g = Math.round(255 + (cg - 255) * t)
-              const b = Math.round(255 + (cb - 255) * t)
-              ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`
-
-              // Offset perpendicular to segment direction
-              const dx = p1.x - p0.x
-              const dy = p1.y - p0.y
-              const len = Math.sqrt(dx * dx + dy * dy) || 1
-              const nx = -dy / len * laneOffset
-              const ny = dx / len * laneOffset
+              const r = Math.round(255 + (cr - 255) * tMid)
+              const g = Math.round(255 + (cg - 255) * tMid)
+              const b = Math.round(255 + (cb - 255) * tMid)
+              ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alphaMid})`
 
               ctx.beginPath()
-              ctx.moveTo(p0.x + nx, p0.y + ny)
-              ctx.lineTo(p1.x + nx, p1.y + ny)
+              for (let j = i; j < end; j++) {
+                const p0 = pts[j - 1]!
+                const p1 = pts[j]!
+                const dx = p1.x - p0.x
+                const dy = p1.y - p0.y
+                const len = Math.sqrt(dx * dx + dy * dy) || 1
+                const nx = -dy / len * laneOffset
+                const ny = dx / len * laneOffset
+                if (j === i) ctx.moveTo(p0.x + nx, p0.y + ny)
+                ctx.lineTo(p1.x + nx, p1.y + ny)
+              }
               ctx.stroke()
             }
           }
@@ -3174,33 +3238,34 @@ export const useSpinnerGame = () => {
             ? (layer.widthBase + layer.widthSpeed) * 1.3
             : layer.widthBase + layer.widthSpeed
 
-          for (let i = 1; i < pts.length; i++) {
-            const p0 = pts[i - 1]!
-            const p1 = pts[i]!
-
-            // t: 0 = oldest point, 1 = newest (closest to blade)
-            const t = timeSpan > 0 ? (p1.time - oldestTime) / timeSpan : 1
-            // Fade out old points by age
-            const age = now - p1.time
-            const ageFade = Math.max(0, 1 - age / TRAIL_DURATION)
-
-            const alpha = ageFade * layer.alphaScale
-            if (alpha <= 0.01) continue
+          // Batch segments into groups of similar alpha to reduce stroke() calls.
+          // Each group shares a single strokeStyle (using the group midpoint's values).
+          const BATCH = 4
+          for (let i = 1; i < pts.length; i += BATCH) {
+            const end = Math.min(i + BATCH, pts.length)
+            // Use midpoint of batch for color/alpha
+            const mid = Math.min(i + (BATCH >> 1), pts.length - 1)
+            const pMid = pts[mid]!
+            const tMid = timeSpan > 0 ? (pMid.time - oldestTime) / timeSpan : 1
+            const ageMid = now - pMid.time
+            const ageFadeMid = Math.max(0, 1 - ageMid / TRAIL_DURATION)
+            const alphaMid = ageFadeMid * layer.alphaScale
+            if (alphaMid <= 0.01) continue
 
             if (isRainbow) {
-              // Rainbow trail: hue cycles along the trail length + time
-              const hue = ((1 - t) * 360 + now * 0.15) % 360
-              ctx.strokeStyle = `hsla(${hue}, 90%, 65%, ${alpha * 1.2})`
+              const hue = ((1 - tMid) * 360 + now * 0.15) % 360
+              ctx.strokeStyle = `hsla(${hue}, 90%, 65%, ${alphaMid * 1.2})`
             } else {
-              // Interpolate white(t=0) → team color(t=1)
-              const r = Math.round(255 + (tr - 255) * t)
-              const g = Math.round(255 + (tg - 255) * t)
-              const b = Math.round(255 + (tb - 255) * t)
-              ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`
+              const r = Math.round(255 + (tr - 255) * tMid)
+              const g = Math.round(255 + (tg - 255) * tMid)
+              const b = Math.round(255 + (tb - 255) * tMid)
+              ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alphaMid})`
             }
             ctx.beginPath()
-            ctx.moveTo(p0.x, p0.y)
-            ctx.lineTo(p1.x, p1.y)
+            ctx.moveTo(pts[i - 1]!.x, pts[i - 1]!.y)
+            for (let j = i; j < end; j++) {
+              ctx.lineTo(pts[j]!.x, pts[j]!.y)
+            }
             ctx.stroke()
           }
         }
@@ -3298,11 +3363,13 @@ export const useSpinnerGame = () => {
     ctx.arc(0, 0, ARENA_RADIUS + 40, 0, Math.PI * 2)
     ctx.fill()
 
-    // Neon border
+    // Neon border — skip shadowBlur on Firefox (very expensive for canvas shadows)
     ctx.strokeStyle = theme.neonColor
     ctx.lineWidth = theme.borderWidth
-    ctx.shadowColor = theme.neonColor
-    ctx.shadowBlur = theme.shadowBlur
+    if (!isFirefox) {
+      ctx.shadowColor = theme.neonColor
+      ctx.shadowBlur = theme.shadowBlur
+    }
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2)
     ctx.stroke()
@@ -3436,8 +3503,10 @@ export const useSpinnerGame = () => {
         ? `rgba(255, 140, 220, ${rimAlpha * idlePulse})`
         : `rgba(180, 240, 255, ${rimAlpha * idlePulse})`
       ctx.lineWidth = 1.5
-      ctx.shadowColor = isShock ? '#ff66cc' : '#8fdfff'
-      ctx.shadowBlur = 6 + hit * 10
+      if (!isFirefox) {
+        ctx.shadowColor = isShock ? '#ff66cc' : '#8fdfff'
+        ctx.shadowBlur = 6 + hit * 10
+      }
       ctx.beginPath()
       ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2)
       ctx.stroke()
@@ -3589,6 +3658,7 @@ export const useSpinnerGame = () => {
    * "picked up" and "expired" paths so they share a single visual recipe.
    */
   const spawnPowerupParticles = (x: number, y: number, stat: PowerupStat) => {
+    if (powerupParticles.length >= 60) return
     const color = POWERUP_STAT_COLOR[stat]
     const COUNT = 10
     for (let i = 0; i < COUNT; i++) {
@@ -3700,16 +3770,18 @@ export const useSpinnerGame = () => {
       }
     }
 
-    // Particle update — drift outward, fade, drop dead entries.
-    for (let i = powerupParticles.length - 1; i >= 0; i--) {
+    // Particle update — drift outward, fade (compact dead entries in-place)
+    let ppWrite = 0
+    for (let i = 0; i < powerupParticles.length; i++) {
       const part = powerupParticles[i]!
       part.x += part.vx * dt
       part.y += part.vy * dt
       part.vx *= 0.94
       part.vy *= 0.94
       part.life -= dt
-      if (part.life <= 0) powerupParticles.splice(i, 1)
+      if (part.life > 0) powerupParticles[ppWrite++] = part
     }
+    powerupParticles.length = ppWrite
   }
 
   /**
@@ -4051,7 +4123,7 @@ export const useSpinnerGame = () => {
       const now = performance.now()
       // Refresh bolt geometry every 100ms for crackling effect
       const boltSeed = Math.floor(now / 100)
-      const boltCount = 5
+      const boltCount = isFirefox ? 1 : 5
       // Ambient electric glow
       ctx.save()
       ctx.globalAlpha = 0.15 + 0.1 * Math.sin(now * 0.008)
@@ -4071,7 +4143,18 @@ export const useSpinnerGame = () => {
         const len = blade.radius * (1.4 + ((boltSeed * 3 + i * 41) % 100) * 0.012)
         const ex = blade.x + Math.cos(angle) * len
         const ey = blade.y + Math.sin(angle) * len
-        drawLightningBolt(ctx, blade.x, blade.y, ex, ey, {
+        drawLightningBolt(ctx, blade.x, blade.y, ex, ey, isFirefox ? {
+          jitter: 6,
+          segments: 4,
+          branchChance: 0.2,
+          branchLength: 0.3,
+          maxDepth: 1,
+          color: '#ffee66',
+          glowColor: '#88bbff',
+          lineWidth: 1.5,
+          glowWidth: 4,
+          alpha: 0.85
+        } : {
           jitter: 8,
           segments: 7,
           branchChance: 0.55,
@@ -4084,14 +4167,26 @@ export const useSpinnerGame = () => {
           alpha: 0.85
         })
       }
-      // 5 smaller arcs filling the gaps between big bolts
+      // Smaller arcs filling the gaps between big bolts
+      const smallBoltCount = isFirefox ? 1 : 5
       const smallSeed = Math.floor(now / 130)
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < smallBoltCount; i++) {
         const angle = ((smallSeed * 11 + i * 73 + 34) % 360) * Math.PI / 180
         const len = blade.radius * (0.85 + ((smallSeed * 5 + i * 29) % 100) * 0.005)
         const ex = blade.x + Math.cos(angle) * len
         const ey = blade.y + Math.sin(angle) * len
-        drawLightningBolt(ctx, blade.x, blade.y, ex, ey, {
+        drawLightningBolt(ctx, blade.x, blade.y, ex, ey, isFirefox ? {
+          jitter: 4,
+          segments: 3,
+          branchChance: 0,
+          branchLength: 0,
+          maxDepth: 0,
+          color: '#ffee66',
+          glowColor: '#88bbff',
+          lineWidth: 0.8,
+          glowWidth: 2.5,
+          alpha: 0.55
+        } : {
           jitter: 5,
           segments: 5,
           branchChance: 0.35,
@@ -4252,6 +4347,8 @@ export const useSpinnerGame = () => {
     if (needsAlpha) ctx.restore()
   }
 
+  const _hpFontCache = new Map<string, number>()
+
   const renderHealthRing = (
     ctx: CanvasRenderingContext2D,
     x: number, y: number,
@@ -4285,15 +4382,21 @@ export const useSpinnerGame = () => {
     // HP number (dynamically sized to fit inside the ring)
     const hpText = Math.ceil(hp).toString()
     const innerDiameter = (ringR - ringWidth) * 2
-    // Binary-ish search: start large, shrink until it fits
-    let fontSize = innerDiameter
-    ctx.font = `bold ${fontSize}px Arial`
-    let measured = ctx.measureText(hpText).width
-    while (measured > innerDiameter * 0.85 && fontSize > 4) {
-      fontSize -= 1
+    // Cache key: text length + inner diameter (rounded) — avoids measureText loop per frame
+    const cacheKey = `${hpText.length}_${Math.round(innerDiameter)}`
+    let fontSize = _hpFontCache.get(cacheKey)
+    if (fontSize === undefined) {
+      fontSize = innerDiameter
       ctx.font = `bold ${fontSize}px Arial`
-      measured = ctx.measureText(hpText).width
+      let measured = ctx.measureText(hpText).width
+      while (measured > innerDiameter * 0.85 && fontSize > 4) {
+        fontSize -= 1
+        ctx.font = `bold ${fontSize}px Arial`
+        measured = ctx.measureText(hpText).width
+      }
+      _hpFontCache.set(cacheKey, fontSize)
     }
+    ctx.font = `bold ${fontSize}px Arial`
 
     ctx.fillStyle = isPlayer ? '#66aaff' : '#ff6666'
     ctx.textAlign = 'center'
@@ -4307,8 +4410,10 @@ export const useSpinnerGame = () => {
   const renderSelectionGlow = (ctx: CanvasRenderingContext2D, blade: SpinnerState) => {
     ctx.strokeStyle = '#ffdd00'
     ctx.lineWidth = 2
-    ctx.shadowColor = '#ffdd00'
-    ctx.shadowBlur = 12
+    if (!isFirefox) {
+      ctx.shadowColor = '#ffdd00'
+      ctx.shadowBlur = 12
+    }
     ctx.beginPath()
     ctx.arc(blade.x, blade.y, blade.radius + 2, 0, Math.PI * 2)
     ctx.stroke()

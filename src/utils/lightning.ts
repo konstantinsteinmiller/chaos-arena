@@ -135,8 +135,9 @@ export const drawLightningBolt = (
   ctx.save()
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.shadowColor = opts.glowColor
-  ctx.shadowBlur = opts.glowWidth
+  // Skip shadowBlur — the glow pass in drawBoltRecursive already renders a
+  // wider translucent stroke; doubling it with a canvas shadow is redundant
+  // and extremely expensive on Firefox.
   drawBoltRecursive(ctx, x0, y0, x1, y1, opts, 0)
   ctx.restore()
   ctx.globalAlpha = 1

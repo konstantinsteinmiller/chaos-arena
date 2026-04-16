@@ -18,7 +18,7 @@ export const useMusic = () => {
 
   watch(userMusicVolume, () => {
     if (!bgMusic.value) return
-    bgMusic.value.volume = userMusicVolume.value * 0.025
+    bgMusic.value.volume = Math.max(0, Math.min(1, (userMusicVolume.value ?? 0.6) * 0.025))
   })
 
   const pauseMusic = () => {
@@ -109,7 +109,7 @@ export const useMusic = () => {
   const fadeIn = () => {
     if (!bgMusic.value) return
     let vol = 0
-    const target = userMusicVolume.value * 0.025
+    const target = Math.max(0, Math.min(1, (userMusicVolume.value ?? 0.6) * 0.025))
     const interval = setInterval(() => {
       if (!bgMusic.value || !shouldPlay.value) {
         clearInterval(interval)
@@ -160,8 +160,10 @@ const useSounds = () => {
     const audio = cached
       ? cached.cloneNode(false) as HTMLAudioElement
       : new Audio(src)
-    // iOS requires volume to be set BEFORE play()
-    audio.volume = userSoundVolume.value * ratio
+    // iOS requires volume to be set BEFORE play().
+    // Clamp to [0,1] — Firefox throws DOMException if volume is NaN or out of range
+    // (can happen when userSoundVolume hasn't loaded from IndexedDB yet).
+    audio.volume = Math.max(0, Math.min(1, (userSoundVolume.value ?? 0.7) * ratio))
     audio.play().catch(e => console.warn('SFX play blocked:', e))
     return audio
   }
