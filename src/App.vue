@@ -2,7 +2,6 @@
 import { RouterView } from 'vue-router'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { isCrazyWeb, isWaveDash, orientation } from '@/use/useUser'
 import { mobileCheck } from '@/utils/function'
 import { useMusic } from '@/use/useSound'
 import { useExtensionGuard } from '@/use/useExtensionGuard'
@@ -10,6 +9,7 @@ import { windowWidth, windowHeight } from '@/use/useUser'
 import useAssets from '@/use/useAssets'
 import FLogoProgress from '@/components/atoms/FLogoProgress.vue'
 import { useCrazyMuteSync } from '@/use/useCrazyMuteSync'
+import { isCrazyWeb, isWaveDash, isItch, orientation } from '@/use/useUser'
 
 const { t } = useI18n()
 const { initMusic, pauseMusic, continueMusic } = useMusic()
@@ -110,18 +110,25 @@ function isWaveDashUrl() {
   return idx !== -1 && idx >= parts.length - 3
 }
 
-const allowedToShowOnCrazyGames = computed(() => (isCrazyWeb && isCrazyGamesUrl()) || !isCrazyWeb)
-const allowedToShowOnWaveDash = computed(() => (isWaveDash && isWaveDashUrl()) || !isWaveDash)
+function isItchUrl() {
+  const hostname = window.location.hostname
+  return hostname.includes('itch') || hostname.includes('itch.io') || hostname.includes('itch.zone')
+}
+
+const isNotPlattformBuild = !isCrazyWeb && !isWaveDash && !isItch
+const allowedToShowOnCrazyGames = computed(() => (isCrazyWeb && isCrazyGamesUrl()) || isNotPlattformBuild)
+const allowedToShowOnWaveDash = computed(() => (isWaveDash && isWaveDashUrl()) || isNotPlattformBuild)
+const allowedToShowOnItch = computed(() => (isItch && isItchUrl()) || isNotPlattformBuild)
 </script>
 
 <template lang="pug">
-  div(v-if="allowedToShowOnCrazyGames || allowedToShowOnWaveDash" id="app-root" class="h-screen h-dvh w-screen app-container root-protection game-ui-immune")
+  div(v-if="allowedToShowOnCrazyGames || allowedToShowOnWaveDash || allowedToShowOnItch" id="app-root" class="h-screen h-dvh w-screen app-container root-protection game-ui-immune")
     FLogoProgress
     RouterView
 
-  div.relative.w-full.h-full(v-else-if="isCrazyWeb || isWaveDash")
+  div.relative.w-full.h-full(v-else-if="isCrazyWeb || isWaveDash || isItch")
     h1.absolute(class="left-1/2 -translate-x-[50%] top-1/2 -translate-y-[50%] text-3xl") {{ t('crazyGamesOnly') }}
-      span.ml-2.text-amber-500 {{ isWaveDash ? 'wavedash.com':  isCrazyWeb ? 'crazygames.com' : ''}}
+      span.ml-2.text-amber-500 {{ isWaveDash ? 'wavedash.com':  isCrazyWeb ? 'crazygames.com' : isItch ? 'itch.io': ''}}
 </template>
 
 <style lang="sass">

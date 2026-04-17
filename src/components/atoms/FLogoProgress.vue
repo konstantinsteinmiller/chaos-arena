@@ -35,6 +35,11 @@
       //- Loading Text
       div.absolute.-bottom-8(v-if="!done" class="mt-0 flex flex-col items-center gap-1")
         span(class="percentage-text text-shadow font-mono text-amber-500") {{ Math.round(progress) }}%
+
+      //- Soft hint if loading is stuck — appears after 10s
+      Transition(name="hint-fade")
+        div.stuck-hint.mt-4(v-if="showStuckHint && !done")
+          | Loading taking too long? Try disabling your ad blocker and refresh.
 </template>
 
 <script setup lang="ts">

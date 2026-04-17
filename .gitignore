@@ -9,6 +9,7 @@ lerna-debug.log*
 
 wavedash.toml
 wavedash-dist
+itch-dist
 dist_electron
 __electron
 electron/dist

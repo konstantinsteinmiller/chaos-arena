@@ -55,6 +55,53 @@ export default defineConfig(({ mode, command }) => {
     )
   }
 
+  // ─── CSP generation ────────────────────────────────────────────────
+  // Whitelist of external hosts. Add new platforms here — they're
+  // automatically applied to every relevant directive.
+  const CSP_HOSTS = [
+    'https://*.crazygames.com',
+    'https://sdk.crazygames.com',
+    'https://wavedash.com',
+    'https://*.wavedash.com',
+    'https://itch.io',
+    'https://*.itch.io',
+    'https://api.jsonbin.io'
+  ]
+  // Extra per-directive sources that don't follow the blanket host pattern.
+  const CSP_EXTRA: Record<string, string[]> = {
+    'script-src': [],
+    'style-src': ['\'unsafe-inline\''],
+    'img-src': ['data:'],
+    'connect-src': [
+      'https://*.sentry.io',
+      'wss://*.wavedash.com',
+      'wss://0.peerjs.com',
+      'https://0.peerjs.com',
+      'https://getpantry.cloud',
+      'https://*.getpantry.cloud'
+    ],
+    'frame-src': [],
+    'media-src': []
+  }
+  const cspDirectives = [
+    'default-src', 'script-src', 'style-src', 'img-src',
+    'connect-src', 'frame-src', 'media-src'
+  ]
+  const cspValue = cspDirectives.map(dir => {
+    const extras = CSP_EXTRA[dir] ?? []
+    return `${dir} 'self' ${CSP_HOSTS.join(' ')} ${extras.join(' ')}`.trim()
+  }).join('; ')
+
+  plugins.push({
+    name: 'inject-csp',
+    transformIndexHtml(html: string) {
+      return html.replace(
+        '<!-- CSP meta tag injected by vite.config.ts at build time -->',
+        `<meta http-equiv="Content-Security-Policy" content="${cspValue}" />`
+      )
+    }
+  })
+
   // Strip the CrazyGames SDK <script> tag from index.html for non-CrazyGames builds
   // so it doesn't block or error on other platforms (e.g. Wavedash).
   const isCrazyWeb = env.VITE_APP_CRAZY_WEB === 'true'
