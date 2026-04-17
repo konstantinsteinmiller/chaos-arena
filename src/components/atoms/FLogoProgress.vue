@@ -54,6 +54,8 @@ preloadAssets()
 const done = ref(false)
 const settled = ref(false)
 const backdropHidden = ref(false)
+const showStuckHint = ref(false)
+let stuckHintId: number | null = null
 
 // Compute 40% of the smaller viewport dimension
 const viewportSize = ref(Math.min(window.innerWidth, window.innerHeight))
@@ -85,10 +87,14 @@ onMounted(() => {
   settleFallbackId = window.setTimeout(() => {
     if (!done.value) done.value = true
   }, 4000)
+  stuckHintId = window.setTimeout(() => {
+    if (!done.value) showStuckHint.value = true
+  }, 10000)
 })
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)
   if (settleFallbackId !== null) clearTimeout(settleFallbackId)
+  if (stuckHintId !== null) clearTimeout(stuckHintId)
 })
 
 const centeredSize = computed(() => Math.floor(viewportSize.value * 0.4))

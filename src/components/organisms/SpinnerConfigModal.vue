@@ -166,12 +166,10 @@ const handleBuySkin = (topId: TopPartId, modelId: SpinnerModelId) => {
   if (coins.value < cost) return
   addCoins(-cost)
   buySkin(topId, modelId)
-  skinPickerKey.value++
 }
 
 const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
   selectSkin(topId, modelId, activeBladeIndex.value as number)
-  skinPickerKey.value++
   emit('save', localTeam.value.map(c => ({ ...c })))
 }
 </script>
@@ -406,6 +404,9 @@ const handleSelectSkin = (topId: TopPartId, modelId: SpinnerModelId) => {
   padding: 0.25rem 0.25rem
   max-height: 75vh
   overflow-y: auto
+  // Reserve scrollbar gutter so hover-scale doesn't pop a scrollbar in/out
+  // (which squeezes content horizontally and produces a visible jitter).
+  scrollbar-gutter: stable
 
 .top-col, .bottom-col
   min-width: 0

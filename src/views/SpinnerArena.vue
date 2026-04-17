@@ -772,11 +772,30 @@ const onConfigSave = (team: SpinnerConfig[]) => {
 
 let renderRafId: number | null = null
 
-const renderLoop = () => {
+// Physics integrates per-frame (e.g. `pos += velocity` without dt scaling),
+// so on 120Hz devices the simulation runs 2x. Cap to a fixed rate when
+// VITE_APP_FPS_CAP is set (native mobile builds inject this via .env.tauri).
+const FPS_CAP = Number(import.meta.env.VITE_APP_FPS_CAP) || 0
+const FRAME_MS = FPS_CAP > 0 ? 1000 / FPS_CAP : 0
+let lastFrameTime = 0
+
+const renderLoop = (now = 0) => {
+  if (FRAME_MS > 0 && now - lastFrameTime < FRAME_MS - 0.5) {
+    renderRafId = requestAnimationFrame(renderLoop)
+    return
+  }
+  lastFrameTime = now
+
   const canvas = canvasRef.value
-  if (!canvas) return
+  if (!canvas) {
+    renderRafId = requestAnimationFrame(renderLoop)
+    return
+  }
   const ctx = canvas.getContext('2d')
-  if (!ctx) return
+  if (!ctx) {
+    renderRafId = requestAnimationFrame(renderLoop)
+    return
+  }
 
   render(ctx, canvasWidth.value, canvasHeight.value, showHint.value)
 

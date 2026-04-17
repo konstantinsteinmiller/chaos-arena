@@ -429,13 +429,9 @@ export const useSpinnerGame = () => {
 
   // ── Animation Frame ──────────────────────────────────────────────────────
   let physicsRafId: number | null = null
-  // Timestamp when game-over was first detected. Used to keep the physics
-  // loop running until active VFX (sparks, damage numbers) finish their
-  // animation before transitioning into the reward phase. Null until game
-  // over is detected, then set once and polled each frame.
+  // Set once when game-over is first detected so the next physics tick can
+  // tear down VFX and transition into the reward phase exactly once.
   let gameOverAt: number | null = null
-  // Hard cap so we never stall forever waiting on VFX.
-  const GAME_OVER_VFX_MAX_MS = 1200
 
   // ── Background tile pattern ─────────────────────────────────────────────
   const bgTileImage = preloadImage(prependBaseUrl('images/bg/bg-tile_400x400.webp'))
@@ -455,6 +451,8 @@ export const useSpinnerGame = () => {
 
   const spawnExplosion = (x: number, y: number, radius: number) => {
     const scale = (radius * 2.5) / EXPLOSION_FW
+    const explosionSoundName = 'explosion-1'
+    playSound(explosionSoundName)
     activeExplosions.push(createSpritesheetAnim(
       explosionImage, x, y,
       EXPLOSION_FRAMES, EXPLOSION_FRAME_DURATION, EXPLOSION_FW, EXPLOSION_FH, scale, false
@@ -1505,6 +1503,7 @@ export const useSpinnerGame = () => {
     damageNumbers.length = 0
     activeSparks.length = 0
     activeExplosions.length = 0
+    activeShockBolts.length = 0
     gameOverAt = null
 
     // ── Powerups ──────────────────────────────────────────────────────────
@@ -2213,23 +2212,16 @@ export const useSpinnerGame = () => {
       gameOverAt = performance.now()
     }
 
-    // Once game-over is latched, keep the physics loop spinning so spark
-    // and damage-number animations can tick to completion. Transition into
-    // 'game_over' only when all VFX are finished (or a hard cap elapsed);
-    // a fixed setTimeout would freeze mid-animation on any spark spawned
-    // late in the grace window.
+    // Game-over: kill any in-flight VFX (shock bolts especially loop long
+    // enough to bleed into the reward screen and the next match) and
+    // transition immediately rather than waiting for animations to drain.
     if (gameResult.value) {
       if (gameOverAt !== null) {
-        const elapsed = performance.now() - gameOverAt
-        const vfxDone = activeSparks.length === 0
-          && damageNumbers.length === 0
-          && activeShockBolts.length === 0
-          && activeExplosions.length === 0
-        if (vfxDone || elapsed >= GAME_OVER_VFX_MAX_MS) {
-          phase.value = 'game_over'
-          stopPhysics()
-          gameOverAt = null
-        }
+        clearBattleVfx()
+        damageNumbers.length = 0
+        phase.value = 'game_over'
+        stopPhysics()
+        gameOverAt = null
       }
       return
     }
@@ -2951,8 +2943,11 @@ export const useSpinnerGame = () => {
   // Fixed-step accumulator: in PvP both clients must run exactly the same
   // number of physics ticks regardless of display refresh rate.  We target
   // 60 Hz (≈16.67 ms per tick). In non-PvP mode we keep the legacy
-  // "one tick per frame" behaviour so feel / difficulty stays unchanged.
+  // "one tick per frame" behaviour so feel / difficulty stays unchanged —
+  // EXCEPT when VITE_APP_FPS_CAP is set (native mobile builds), where 120Hz
+  // panels would otherwise double the simulation rate.
   const FIXED_STEP_MS = 1000 / 60
+  const FORCE_FIXED_STEP = Number(import.meta.env.VITE_APP_FPS_CAP) > 0
   let physicsAccumulator = 0
   let lastPhysicsTime = 0
 
@@ -2964,7 +2959,7 @@ export const useSpinnerGame = () => {
       try {
         const steps = simSpeed.value
 
-        if (pvpMode.value) {
+        if (pvpMode.value || FORCE_FIXED_STEP) {
           // Fixed-step: accumulate real elapsed time and consume in fixed chunks
           physicsAccumulator += now - lastPhysicsTime
           lastPhysicsTime = now
