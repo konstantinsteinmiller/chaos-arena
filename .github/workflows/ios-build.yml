@@ -91,8 +91,54 @@ jobs:
             pnpm exec tauri ios init
           fi
 
+      - name: Install Pillow (for alpha-strip)
+        run: python3 -m pip install --quiet --user --break-system-packages Pillow || python3 -m pip install --quiet --user Pillow
+
+      - name: Pre-strip alpha from master icon (so tauri icon regenerates without transparency)
+        run: |
+          python3 - <<'PY'
+          from PIL import Image
+          path = "src-tauri/icons/icon.png"
+          img = Image.open(path)
+          if img.mode != "RGB":
+              rgba = img.convert("RGBA")
+              bg = Image.new("RGB", img.size, (0, 0, 0))
+              bg.paste(rgba, mask=rgba.split()[3])
+              bg.save(path, "PNG")
+              print(f"Stripped alpha from master: {path}")
+          else:
+              print(f"Master already opaque: {path}")
+          PY
+
       - name: Sync app icons into iOS asset catalog
         run: pnpm exec tauri icon src-tauri/icons/icon.png
+
+      - name: Strip alpha from generated iOS icons (defense in depth — App Store rejects 1024x1024 with alpha)
+        run: |
+          python3 - <<'PY'
+          from PIL import Image
+          import glob, os
+
+          patterns = [
+              "src-tauri/icons/ios/*.png",
+              "src-tauri/gen/apple/**/Assets.xcassets/AppIcon.appiconset/*.png",
+          ]
+          paths = []
+          for p in patterns:
+              paths.extend(glob.glob(p, recursive=True))
+          if not paths:
+              print("::warning::No iOS icon PNGs found to strip")
+          for path in paths:
+              img = Image.open(path)
+              if img.mode != "RGB":
+                  rgba = img.convert("RGBA")
+                  bg = Image.new("RGB", img.size, (0, 0, 0))
+                  bg.paste(rgba, mask=rgba.split()[3])
+                  bg.save(path, "PNG")
+                  print(f"Stripped: {path}")
+              else:
+                  print(f"OK: {path}")
+          PY
 
       - name: Set CFBundleVersion to unique per-run build number
         run: |

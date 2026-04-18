@@ -81,7 +81,10 @@
       "Read(//c/Program Files/WindowsApps//**)",
       "Bash(\"/c/Users/konst/AppData/Local/Microsoft/WindowsApps/winget.exe\" --version)",
       "Bash(/c/Users/konst/AppData/Local/Microsoft/WindowsApps/winget.exe install *)",
-      "Bash(\"/c/Users/konst/AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe\" -version)"
+      "Bash(\"/c/Users/konst/AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe\" -version)",
+      "Bash(command -v base64)",
+      "Bash(cmd.exe /c \"echo hello| C:\\\\Users\\\\konst\\\\bin\\\\base64.cmd\")",
+      "Bash(cmd.exe *)"
     ]
   }
 }
