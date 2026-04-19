@@ -50,7 +50,7 @@ import {
 import useBottomSafe from '@/use/useBottomSafe'
 import { getSelectedSkin, modelImgPath } from '@/use/useModels'
 import useAssets from '@/use/useAssets'
-import { isCrazyGamesFullRelease } from '@/use/useMatch.ts'
+import { isCrazyGamesFullRelease, isDebug } from '@/use/useMatch.ts'
 import { spawnCoinExplosion } from '@/use/useCoinExplosion'
 import useCheats from '@/use/useCheats'
 import { cheatRouletteSignal } from '@/use/useCheats'
@@ -341,10 +341,20 @@ const bladeStats = computed(() =>
   })
 )
 
+// Set when the player surrenders the current battle. The PvP surrender flow
+// passes through the normal game_over → reward modal → onRewardContinue
+// path; this flag tells onRewardContinue to skip the ad-counter increment so
+// surrendered matches don't count toward the interstitial cadence. Cleared
+// in onRewardContinue after it's read. Campaign/ghost surrenders bypass the
+// reward flow entirely (direct initGame below) so the flag isn't needed
+// there, but we still set it for symmetry / future-proofing.
+let surrenderedThisBattle = false
+
 const onSurrender = () => {
   stopPhysics()
   clearBattleVfx()
   stopBattleMusic()
+  surrenderedThisBattle = true
   if (pvpMode.value) {
     // Notify opponent, then force a loss game-over
     pvpSendSurrender()
@@ -417,6 +427,12 @@ const updateSpeedBoost = () => {
 }
 
 const onSpeedSwitchClick = (value: 1 | 2) => {
+  if (isDebug.value && value === 2) {
+    speedBoostExpiresAt.value = Date.now() + SPEED_BOOST_DURATION_MS
+    localStorage.setItem(SPEED_BOOST_KEY, String(speedBoostExpiresAt.value))
+    simSpeed.value = 2
+    return
+  }
   if (value === 1) {
     simSpeed.value = 1
     return
@@ -668,9 +684,11 @@ const onRouletteRewardContinue = async () => {
   if (!rouletteRewardReady.value) return
   showRouletteReward.value = false
 
-  // Same reset flow as onRewardContinue — ad cadence, teardown, reinit
+  // Same reset flow as onRewardContinue — ad cadence, teardown, reinit.
+  // Boss-win path is campaign-only (never PvP/ghost), so threshold is 4.
+  // No surrender check needed: you can't surrender after winning the boss.
   incrementAdCounter()
-  if (isCrazyGamesFullRelease && isSdkActive.value && battlesSinceAd.value >= 3) {
+  if (isCrazyGamesFullRelease && isSdkActive.value && battlesSinceAd.value >= 4) {
     resetAdCounter()
     await showMidgameAd()
   }
@@ -695,8 +713,9 @@ watch(showReward, async (show) => {
 
 // ─── Interstitial cadence ─────────────────────────────────────────────────
 // A single counter tracks battles since the last ad across all modes:
-//   - ghost / PvP battles trigger an ad after 2 battles without one
-//   - campaign battles trigger an ad after 3 battles without one
+//   - ghost / PvP battles trigger an ad after 3 battles without one
+//   - campaign battles trigger an ad after 4 battles without one
+// Surrendered battles do NOT increment the counter (see surrenderedThisBattle).
 // This avoids edge cases where mixing modes causes back-to-back ads.
 const AD_BATTLES_KEY = 'ca_battles_since_ad'
 
@@ -726,10 +745,15 @@ const onRewardContinue = async () => {
   // Snapshot mode flags before tearing down state
   const wasPvp = pvpMode.value
   const wasGhost = ghostMode.value
+  const wasSurrender = surrenderedThisBattle
+  surrenderedThisBattle = false
 
-  // ghost/pvp → ad threshold 2, campaign → ad threshold 3
-  const adThreshold = (wasPvp || wasGhost) ? 2 : 3
-  incrementAdCounter()
+  // ghost/pvp → ad threshold 3, campaign → ad threshold 4
+  const adThreshold = (wasPvp || wasGhost) ? 3 : 4
+  // Surrendered battles don't count toward the cadence — the player chose
+  // to bail, not to "finish" the match, so we don't penalise them with an
+  // ad on top of the abandoned reward.
+  if (!wasSurrender) incrementAdCounter()
 
   // Show interstitial when the counter reaches the threshold
   if (isCrazyGamesFullRelease && isSdkActive.value && battlesSinceAd.value >= adThreshold) {
@@ -1197,7 +1221,7 @@ onUnmounted(() => {
       )
         //- Row 1: speed switch (hidden during spotlight)
         FButtonSwitch.speedup-switch.scale-90(
-          v-if="isSdkActive && isCrazyGamesFullRelease && !showConfigSpotlight"
+          v-if="(isSdkActive && isCrazyGamesFullRelease && !showConfigSpotlight) || isDebug"
           class="sm:scale-100"
           :model-value="simSpeed"
           :options="[{ value: 1 }, { value: 2 }]"

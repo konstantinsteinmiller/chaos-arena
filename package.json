@@ -41,7 +41,7 @@
     "native-package": "dotenv -e .env.native -- pnpm run native-build && electron-builder"
   },
   "build": {
-    "appId": "com.game.chaosarena",
+    "appId": "com.chaos.arena",
     "productName": "Chaos Arena",
     "directories": {
       "output": "electron/dist",

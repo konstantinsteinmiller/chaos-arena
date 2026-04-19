@@ -152,11 +152,17 @@ function renderSpritesheetAnim(ctx: CanvasRenderingContext2D, anim: SpritesheetA
 const arenaType: Ref<ArenaType> = ref('default')
 export { arenaType }
 
-// ─── Simulation Speed (visual speed-up only) ────────────────────────────────
+// ─── Simulation Speed (visual travel speed only) ────────────────────────────
 
 // Module-level so the speed setting persists across composable instances and
-// can be controlled from anywhere in the UI. Damage is unaffected: we simply
-// run the deterministic physics step N times per rendered frame.
+// can be controlled from anywhere in the UI. At 2x we substep ALL physics
+// (accel ramp, position, velocity decay, wall/bouncer/blade collision) — so
+// blades launch, travel, AND brake twice as fast in real time. What stays
+// 1x: VFX timers (hit flash, sparks, damage-number floats), powerup spawn
+// cadence, and the `contactArmed` real-time damage gate — both substeps see
+// the same `gameTime()` value so a colliding pair still gets exactly one
+// damage roll per tick. Net effect: matches finish in roughly half the
+// wall-clock time without inflating per-swing damage.
 export const simSpeed: Ref<1 | 2> = ref(1)
 
 // ─── Game-Start Countdown ────────────────────────────────────────────────────
@@ -2049,82 +2055,105 @@ export const useSpinnerGame = () => {
 
     const all = allBlades.value
 
-    // Per-blade physics
-    for (const blade of all) {
-      if (blade.hp <= 0) continue
+    // ─── Physics substeps (accel + move + decay + collision) ───────────────
+    // At simSpeed=2 we run the full physics block twice per tick: blades
+    // launch, travel, AND brake twice as fast in real time. Per-collision
+    // damage stays 1x per pair per tick because `resolveCollision` checks
+    // the `contactArmed` real-time gate (CONTACT_REARM_MS) — both substeps
+    // happen within the same `gameTime()` reading, so substep 2 sees the
+    // pair as "still in contact" and skips the damage roll. VFX timers
+    // (hitFlash, sparks, damage numbers) and updatePowerups stay 1x
+    // (handled outside this loop).
+    const subSteps = simSpeed.value
+    for (let s = 0; s < subSteps; s++) {
+      for (const blade of all) {
+        if (blade.hp <= 0) continue
 
-      // Apply acceleration ramp
-      if (blade.accelFramesLeft > 0) {
-        blade.vx += blade.ax
-        blade.vy += blade.ay
-        blade.accelFramesLeft--
-        if (blade.accelFramesLeft === 0) {
-          blade.ax = 0
-          blade.ay = 0
-          blade.lastHitTime = gameTime()
-        }
-      }
-
-      // Move
-      blade.x += blade.vx
-      blade.y += blade.vy
-
-      // Decelerate (only after ramp is done)
-      if (blade.accelFramesLeft === 0) {
-        const stats = statsFor(blade)
-        let decay = stats.forceDecay
-        // Ice arena: significantly reduced friction (blades slide more)
-        if (arenaType.value === 'ice') {
-          decay = 1 - (1 - decay) * 0.35
-        }
-        // Below 25% max speed, gradually increase deceleration to reduce idle time
-        const maxSpd = BASE_MAX_FORCE * stats.speedMultiplier
-        const spdRatio = speed(blade) / maxSpd
-        if (spdRatio < 0.25) {
-          // Lerp decay toward a much stronger brake as speed approaches 0
-          const t = 1 - spdRatio / 0.25 // 0 at 25%, 1 at 0%
-          decay = decay * (1 - t) + 0.95 * t
-        }
-
-        // Exponential slowdown the longer a blade travels without hitting another blade
-        if (blade.lastHitTime > 0) {
-          const elapsed = gameTime() - blade.lastHitTime
-          // After ~1s no-hit, start applying extra drag that ramps up exponentially
-          const NO_HIT_GRACE_MS = 1000
-          if (elapsed > NO_HIT_GRACE_MS) {
-            const overTime = (elapsed - NO_HIT_GRACE_MS) / 1000 // seconds past grace
-            // Extra decay: 0.99^(overTime^1.5) — ramps gently then aggressively
-            const extraDecay = Math.pow(0.99, Math.pow(overTime, 1.5))
-            decay *= extraDecay
+        // Apply acceleration ramp
+        if (blade.accelFramesLeft > 0) {
+          blade.vx += blade.ax
+          blade.vy += blade.ay
+          blade.accelFramesLeft--
+          if (blade.accelFramesLeft === 0) {
+            blade.ax = 0
+            blade.ay = 0
+            blade.lastHitTime = gameTime()
           }
         }
 
-        blade.vx *= decay
-        blade.vy *= decay
+        // Move
+        blade.x += blade.vx
+        blade.y += blade.vy
+
+        // Decelerate (only after ramp is done)
+        if (blade.accelFramesLeft === 0) {
+          const stats = statsFor(blade)
+          let decay = stats.forceDecay
+          // Ice arena: significantly reduced friction (blades slide more)
+          if (arenaType.value === 'ice') {
+            decay = 1 - (1 - decay) * 0.35
+          }
+          // Below 25% max speed, gradually increase deceleration to reduce idle time
+          const maxSpd = BASE_MAX_FORCE * stats.speedMultiplier
+          const spdRatio = speed(blade) / maxSpd
+          if (spdRatio < 0.25) {
+            // Lerp decay toward a much stronger brake as speed approaches 0
+            const t = 1 - spdRatio / 0.25 // 0 at 25%, 1 at 0%
+            decay = decay * (1 - t) + 0.95 * t
+          }
+
+          // Exponential slowdown the longer a blade travels without hitting another blade
+          if (blade.lastHitTime > 0) {
+            const elapsed = gameTime() - blade.lastHitTime
+            // After ~1s no-hit, start applying extra drag that ramps up exponentially
+            const NO_HIT_GRACE_MS = 1000
+            if (elapsed > NO_HIT_GRACE_MS) {
+              const overTime = (elapsed - NO_HIT_GRACE_MS) / 1000 // seconds past grace
+              // Extra decay: 0.99^(overTime^1.5) — ramps gently then aggressively
+              const extraDecay = Math.pow(0.99, Math.pow(overTime, 1.5))
+              decay *= extraDecay
+            }
+          }
+
+          blade.vx *= decay
+          blade.vy *= decay
+        }
+
+        // Clamp to stop
+        const spd = speed(blade)
+        if (spd < STOP_THRESHOLD && blade.accelFramesLeft === 0) {
+          blade.vx = 0
+          blade.vy = 0
+        }
+
+        // Spin proportional to speed, scaled by HP (100% at full → 40% at 5% HP)
+        const hpPct = Math.max(0.05, blade.hp / blade.maxHp)
+        const hpSpinScale = 0.4 + 0.6 * hpPct
+        const comboRotMul = arenaType.value === 'thunder'
+          ? 1 + (comboState.get(blade.id)?.stacks ?? 0) * 0.2
+          : 1
+        blade.rotation += (blade.rotationSpeed + spd * 0.02) * hpSpinScale * comboRotMul
+
+        // Wall collision with BOOST
+        bounceOffWalls(blade)
+        // Pinball-bouncer ricochet (no-op on stages without bouncers)
+        bounceOffBouncers(blade)
       }
 
-      // Clamp to stop
-      const spd = speed(blade)
-      if (spd < STOP_THRESHOLD && blade.accelFramesLeft === 0) {
-        blade.vx = 0
-        blade.vy = 0
+      // All-pairs collision (including friendly fire!)
+      for (let i = 0; i < all.length; i++) {
+        for (let j = i + 1; j < all.length; j++) {
+          if (all[i]!.hp <= 0 || all[j]!.hp <= 0) continue
+          resolveCollision(all[i]!, all[j]!)
+        }
       }
+    }
 
-      // Spin proportional to speed, scaled by HP (100% at full → 40% at 5% HP)
-      const hpPct = Math.max(0.05, blade.hp / blade.maxHp)
-      const hpSpinScale = 0.4 + 0.6 * hpPct
-      const comboRotMul = arenaType.value === 'thunder'
-        ? 1 + (comboState.get(blade.id)?.stacks ?? 0) * 0.2
-        : 1
-      blade.rotation += (blade.rotationSpeed + spd * 0.02) * hpSpinScale * comboRotMul
-
-      // Hit flash decay
+    // Hit flash decay — VFX timer, ticks once per real frame regardless of
+    // simSpeed so flashes don't double-blink at 2x.
+    for (const blade of all) {
+      if (blade.hp <= 0) continue
       if (blade.hitFlash > 0) blade.hitFlash--
-
-      // Wall collision with BOOST
-      bounceOffWalls(blade)
-      // Pinball-bouncer ricochet (no-op on stages without bouncers)
-      bounceOffBouncers(blade)
     }
 
     // Decay bouncer flash intensity back toward 0 so the hit glow fades
@@ -2139,14 +2168,6 @@ export const useSpinnerGame = () => {
     const trailNow = performance.now()
     updateTrails(all, trailNow)
     updateSpecialSkinVFX(all, trailNow)
-
-    // All-pairs collision (including friendly fire!)
-    for (let i = 0; i < all.length; i++) {
-      for (let j = i + 1; j < all.length; j++) {
-        if (all[i]!.hp <= 0 || all[j]!.hp <= 0) continue
-        resolveCollision(all[i]!, all[j]!)
-      }
-    }
 
     // Thunder boss aura: 1 damage/sec to nearby enemy blades within bolt radius
     const THUNDER_RADIUS_MUL = 1.8 // matches visual bolt reach
@@ -2965,14 +2986,13 @@ export const useSpinnerGame = () => {
 
     const loop = (now: number) => {
       try {
-        const steps = simSpeed.value
         physicsAccumulator += now - lastPhysicsTime
         lastPhysicsTime = now
         if (physicsAccumulator > FIXED_STEP_MS * MAX_CATCHUP_TICKS) {
           physicsAccumulator = FIXED_STEP_MS * MAX_CATCHUP_TICKS
         }
         while (physicsAccumulator >= FIXED_STEP_MS) {
-          for (let i = 0; i < steps; i++) updatePhysics()
+          updatePhysics()
           physicsAccumulator -= FIXED_STEP_MS
         }
       } catch (e) {
@@ -3796,9 +3816,9 @@ export const useSpinnerGame = () => {
   /**
    * Per-physics-tick driver for the spawn timer, lifecycle animation, blade
    * collision check, and disintegrate particles. Always called from
-   * `updatePhysics` so it inherits the deterministic 16ms step and the
-   * `simSpeed` multiplier (powerups appear faster in 2x mode, matching the
-   * rest of the simulation).
+   * `updatePhysics` once per fixed 16ms step. NOT scaled by `simSpeed` —
+   * 2x only affects position integration, so powerup spawn cadence stays
+   * identical at 1x and 2x.
    */
   const updatePowerups = (dt: number): void => {
     if (!powerupsEnabled) return
