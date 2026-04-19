@@ -22,6 +22,7 @@ import useSounds from '@/use/useSound'
 import { prependBaseUrl } from '@/utils/function.ts'
 import { resourceCache } from '@/use/useAssets'
 import { drawLightningBolt } from '@/utils/lightning'
+import { matchRng, seedMatchRngRandom } from '@/use/useDeterministicRng'
 
 const { triggerShake } = useScreenshake()
 const { playSound } = useSounds()
@@ -424,7 +425,7 @@ export const useSpinnerGame = () => {
 
   const rollPowerupSpawnDelay = (): number => {
     const span = Math.max(0, powerupIntervalMaxMs - powerupIntervalMinMs)
-    return powerupIntervalMinMs + Math.random() * span
+    return powerupIntervalMinMs + matchRng() * span
   }
 
   // ── Animation Frame ──────────────────────────────────────────────────────
@@ -1312,6 +1313,9 @@ export const useSpinnerGame = () => {
     BLADE_RADIUS = pvpMode.value ? PVP_BLADE_RADIUS : DEFAULT_BLADE_RADIUS
     pvpTickCount = 0
     firstGameBoost = boost
+    // In PvP the host already seeded + broadcast a shared seed via the
+    // game-start message; single-player reseeds locally per match.
+    if (!pvpMode.value) seedMatchRngRandom()
     stopPhysics()
     nextBladeId = 0
     // Clear cached player model images so skin changes take effect
@@ -2025,7 +2029,7 @@ export const useSpinnerGame = () => {
         // - After a win or before any match has been played, the enemy starts 70% of
         //   the time so wins feel earned rather than handed out.
         const playerStartChance = lastGameResult.value === 'lose' ? 0.80 : 0.30
-        const startsWithPlayer = Math.random() < playerStartChance
+        const startsWithPlayer = matchRng() < playerStartChance
         turnAnnouncement.value = startsWithPlayer ? 'YOUR TURN' : 'NPC TURN'
         setTimeout(() => {
           phase.value = startsWithPlayer ? 'player_turn' : 'npc_turn'
@@ -2940,14 +2944,18 @@ export const useSpinnerGame = () => {
 
   // ─── Physics Loop ────────────────────────────────────────────────────────
 
-  // Fixed-step accumulator: in PvP both clients must run exactly the same
-  // number of physics ticks regardless of display refresh rate.  We target
-  // 60 Hz (≈16.67 ms per tick). In non-PvP mode we keep the legacy
-  // "one tick per frame" behaviour so feel / difficulty stays unchanged —
-  // EXCEPT when VITE_APP_FPS_CAP is set (native mobile builds), where 120Hz
-  // panels would otherwise double the simulation rate.
+  // Fixed-step accumulator. The simulation always advances in discrete
+  // 60 Hz chunks (≈16.67 ms/tick) regardless of display refresh rate —
+  // that's the only way a 144 Hz desktop and a 60 Hz phone reach the
+  // same state after the same wall-clock, which is mandatory for PvP
+  // and makes single-player feel identical across devices. If real time
+  // per rAF exceeds one tick we consume several ticks to catch up; if
+  // it falls short we skip the update and render interpolates on top.
   const FIXED_STEP_MS = 1000 / 60
-  const FORCE_FIXED_STEP = Number(import.meta.env.VITE_APP_FPS_CAP) > 0
+  // Cap catch-up to avoid spiral-of-death when the tab was backgrounded
+  // for many seconds — we'd otherwise try to simulate minutes of physics
+  // in a single frame and hang the page.
+  const MAX_CATCHUP_TICKS = 10
   let physicsAccumulator = 0
   let lastPhysicsTime = 0
 
@@ -2958,21 +2966,14 @@ export const useSpinnerGame = () => {
     const loop = (now: number) => {
       try {
         const steps = simSpeed.value
-
-        if (pvpMode.value || FORCE_FIXED_STEP) {
-          // Fixed-step: accumulate real elapsed time and consume in fixed chunks
-          physicsAccumulator += now - lastPhysicsTime
-          lastPhysicsTime = now
-          // Cap to avoid spiral-of-death if tab was backgrounded
-          if (physicsAccumulator > FIXED_STEP_MS * 10) physicsAccumulator = FIXED_STEP_MS * 10
-          while (physicsAccumulator >= FIXED_STEP_MS) {
-            for (let i = 0; i < steps; i++) updatePhysics()
-            physicsAccumulator -= FIXED_STEP_MS
-          }
-        } else {
-          // Legacy: one tick per rendered frame (frame-rate-dependent but
-          // only affects single-player where it doesn't matter)
+        physicsAccumulator += now - lastPhysicsTime
+        lastPhysicsTime = now
+        if (physicsAccumulator > FIXED_STEP_MS * MAX_CATCHUP_TICKS) {
+          physicsAccumulator = FIXED_STEP_MS * MAX_CATCHUP_TICKS
+        }
+        while (physicsAccumulator >= FIXED_STEP_MS) {
           for (let i = 0; i < steps; i++) updatePhysics()
+          physicsAccumulator -= FIXED_STEP_MS
         }
       } catch (e) {
         console.error('[physics loop]', e)
@@ -3011,7 +3012,8 @@ export const useSpinnerGame = () => {
     ctx.translate(centerX, centerY)
     ctx.scale(scale, scale)
 
-    renderArena(ctx)
+    drawArenaStaticCached(ctx)
+    renderArenaDynamic(ctx)
     renderBouncers(ctx)
     renderPowerups(ctx)
     renderMeteorShower(ctx)
@@ -3367,7 +3369,12 @@ export const useSpinnerGame = () => {
     }
   }
 
-  const renderArena = (ctx: CanvasRenderingContext2D) => {
+  // Static-layer renderer: everything in the arena that doesn't change
+  // within a match (floor gradient, outer halo, neon border + shadowBlur,
+  // inner rings, theme frost/shock bands). Called into a cached buffer
+  // (see arenaStaticBuffer below), not directly from the per-frame path.
+  // Caller must have already translated to the arena origin.
+  const renderArenaStatic = (ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D) => {
     const theme = ARENA_THEMES[arenaType.value]
 
     // Arena floor
@@ -3382,18 +3389,6 @@ export const useSpinnerGame = () => {
     ctx.beginPath()
     ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2)
     ctx.fill()
-
-    // Pulsating inner glow (for themed arenas)
-    if (theme.innerGlowRgba) {
-      const pulse = 0.3 + 0.2 * Math.sin(performance.now() * 0.002)
-      const innerGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, ARENA_RADIUS * 0.7)
-      innerGlow.addColorStop(0, `${theme.innerGlowRgba} ${pulse * 0.15})`)
-      innerGlow.addColorStop(1, `${theme.innerGlowRgba} 0)`)
-      ctx.fillStyle = innerGlow
-      ctx.beginPath()
-      ctx.arc(0, 0, ARENA_RADIUS * 0.7, 0, Math.PI * 2)
-      ctx.fill()
-    }
 
     // Outer glow halo
     const glowGrad = ctx.createRadialGradient(0, 0, ARENA_RADIUS - 2, 0, 0, ARENA_RADIUS + 40)
@@ -3486,6 +3481,77 @@ export const useSpinnerGame = () => {
       ctx.arc(0, 0, ARENA_RADIUS - 8, 0, Math.PI * 2)
       ctx.stroke()
     }
+  }
+
+  // Time-varying overlay drawn each frame on top of the cached static
+  // arena. Only the pulsating inner glow qualifies — everything else in
+  // the arena is frozen within a match and lives in the cache.
+  const renderArenaDynamic = (ctx: CanvasRenderingContext2D) => {
+    const theme = ARENA_THEMES[arenaType.value]
+    if (!theme.innerGlowRgba) return
+    const pulse = 0.3 + 0.2 * Math.sin(performance.now() * 0.002)
+    const innerGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, ARENA_RADIUS * 0.7)
+    innerGlow.addColorStop(0, `${theme.innerGlowRgba} ${pulse * 0.15})`)
+    innerGlow.addColorStop(1, `${theme.innerGlowRgba} 0)`)
+    ctx.fillStyle = innerGlow
+    ctx.beginPath()
+    ctx.arc(0, 0, ARENA_RADIUS * 0.7, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  // ── Arena static-layer cache ──────────────────────────────────────────
+  // The static arena art (floor, halo, neon border with shadowBlur, inner
+  // rings, ice/shock frost bands) doesn't change within a match, yet its
+  // per-frame cost on Firefox — dominated by shadowBlur on the neon border
+  // — is one of the biggest items in the render budget. We pre-composite
+  // it into a buffer sized in arena-local coordinates so the cache is
+  // independent of viewport and canvas scale. Invalidated when arenaType
+  // changes; lazily rebuilt on the next render.
+  //
+  // Buffer radius of 280 covers ARENA_RADIUS (200) + outer halo (40) + a
+  // safety margin for shadowBlur bleed that's larger than any theme's
+  // shadowBlur setting. 560×560 RGBA = ~1.2 MB — fine.
+  const ARENA_STATIC_BUFFER_RADIUS = 280
+  const ARENA_STATIC_BUFFER_SIZE = ARENA_STATIC_BUFFER_RADIUS * 2
+  let arenaStaticBuffer: OffscreenCanvas | HTMLCanvasElement | null = null
+  let arenaStaticCacheKey: ArenaType | null = null
+
+  const createArenaStaticBuffer = (): OffscreenCanvas | HTMLCanvasElement => {
+    if (typeof OffscreenCanvas !== 'undefined') {
+      return new OffscreenCanvas(ARENA_STATIC_BUFFER_SIZE, ARENA_STATIC_BUFFER_SIZE)
+    }
+    const c = document.createElement('canvas')
+    c.width = ARENA_STATIC_BUFFER_SIZE
+    c.height = ARENA_STATIC_BUFFER_SIZE
+    return c
+  }
+
+  const rebuildArenaStaticBuffer = () => {
+    if (!arenaStaticBuffer) arenaStaticBuffer = createArenaStaticBuffer()
+    const bctx = arenaStaticBuffer.getContext('2d') as
+      | CanvasRenderingContext2D
+      | OffscreenCanvasRenderingContext2D
+      | null
+    if (!bctx) return
+    bctx.clearRect(0, 0, ARENA_STATIC_BUFFER_SIZE, ARENA_STATIC_BUFFER_SIZE)
+    bctx.save()
+    bctx.translate(ARENA_STATIC_BUFFER_RADIUS, ARENA_STATIC_BUFFER_RADIUS)
+    renderArenaStatic(bctx)
+    bctx.restore()
+    arenaStaticCacheKey = arenaType.value
+  }
+
+  // Blit the cached static arena at the arena origin. Caller has already
+  // translated+scaled into arena-local space, so we draw the buffer
+  // centred at (0,0).
+  const drawArenaStaticCached = (ctx: CanvasRenderingContext2D) => {
+    if (arenaStaticCacheKey !== arenaType.value) rebuildArenaStaticBuffer()
+    if (!arenaStaticBuffer) return
+    ctx.drawImage(
+      arenaStaticBuffer as CanvasImageSource,
+      -ARENA_STATIC_BUFFER_RADIUS,
+      -ARENA_STATIC_BUFFER_RADIUS
+    )
   }
 
   /**
@@ -3655,10 +3721,10 @@ export const useSpinnerGame = () => {
     const minSepPowerup = fullRadius * 2 + 8
     const placementR = ARENA_RADIUS - fullRadius - 12
     for (let attempt = 0; attempt < 12; attempt++) {
-      const angle = Math.random() * Math.PI * 2
+      const angle = matchRng() * Math.PI * 2
       // Bias slightly toward the inner arena so spawned crates aren't
       // pinned against the wall where blades have less room to redirect.
-      const r = placementR * (0.25 + Math.random() * 0.7)
+      const r = placementR * (0.25 + matchRng() * 0.7)
       const x = Math.cos(angle) * r
       const y = Math.sin(angle) * r
 
@@ -3680,7 +3746,7 @@ export const useSpinnerGame = () => {
       }
       if (!ok) continue
 
-      const stat = POWERUP_STATS[Math.floor(Math.random() * POWERUP_STATS.length)]!
+      const stat = POWERUP_STATS[Math.floor(matchRng() * POWERUP_STATS.length)]!
       powerups.value.push({
         id: nextPowerupId++,
         x, y,

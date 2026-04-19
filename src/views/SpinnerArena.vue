@@ -791,14 +791,29 @@ const onConfigSave = (team: SpinnerConfig[]) => {
 
 let renderRafId: number | null = null
 
-// Physics integrates per-frame (e.g. `pos += velocity` without dt scaling),
-// so on 120Hz devices the simulation runs 2x. Cap to a fixed rate when
-// VITE_APP_FPS_CAP is set (native mobile builds inject this via .env.tauri).
+// FPS cap for render pacing on 120Hz panels where we don't want to burn
+// GPU redrawing the same state twice. The physics loop now owns the
+// simulation rate independently via a fixed-step accumulator — this cap
+// only gates how often we paint.
 const FPS_CAP = Number(import.meta.env.VITE_APP_FPS_CAP) || 0
 const FRAME_MS = FPS_CAP > 0 ? 1000 / FPS_CAP : 0
 let lastFrameTime = 0
 
+// Canvas visibility gate. IntersectionObserver flips this false when the
+// arena is fully covered by another surface (modal, scrolled away, etc).
+// Draws are skipped while it's false; physics keeps ticking. Starts true
+// because IO fires its first callback asynchronously — rendering one
+// extra frame while we wait is harmless.
+let canvasVisible = true
+
 const renderLoop = (now = 0) => {
+  // Tab is hidden / minimized / OS-obstructed — the browser already
+  // throttles rAF heavily here, but skipping the draw entirely saves
+  // the occasional wake-up from spending CPU on a pixel nobody sees.
+  if (document.hidden || !canvasVisible) {
+    renderRafId = requestAnimationFrame(renderLoop)
+    return
+  }
   if (FRAME_MS > 0 && now - lastFrameTime < FRAME_MS - 0.5) {
     renderRafId = requestAnimationFrame(renderLoop)
     return
@@ -828,6 +843,8 @@ const renderLoop = (now = 0) => {
   renderRafId = requestAnimationFrame(renderLoop)
 }
 
+let canvasObserver: IntersectionObserver | null = null
+
 const onViewportChange = () => {
   updateCanvasSize()
   scheduleBottomMeasure()
@@ -843,6 +860,22 @@ onMounted(() => {
 
   initGame(playerTeamWithUpgrades(), stageNpcTeam(), !hasFirstWin.value, currentStage.value.arenaType, currentStage.value.bouncers ?? 0, currentStageId.value >= 2)
   renderRafId = requestAnimationFrame(renderLoop)
+
+  // Watch the canvas for being fully off-screen or covered. Once visibility
+  // drops to 0 (scrolled out, browser minimized on some platforms, another
+  // element painted fully on top via a full-screen overlay) the render loop
+  // skips draws. Any non-zero intersection re-enables painting.
+  if (typeof IntersectionObserver !== 'undefined' && canvasRef.value) {
+    canvasObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          canvasVisible = entry.intersectionRatio > 0
+        }
+      },
+      { threshold: [0, 0.01] }
+    )
+    canvasObserver.observe(canvasRef.value)
+  }
 
   recordPlayerStage(currentStageId.value)
 
@@ -944,6 +977,10 @@ onUnmounted(() => {
   window.visualViewport?.removeEventListener('scroll', onViewportChange)
   stopPhysics()
   if (renderRafId !== null) cancelAnimationFrame(renderRafId)
+  if (canvasObserver) {
+    canvasObserver.disconnect()
+    canvasObserver = null
+  }
   if (speedBoostIntervalId !== null) clearInterval(speedBoostIntervalId)
   // Always leave the arena at normal speed so other views aren't affected
   simSpeed.value = 1

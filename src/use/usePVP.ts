@@ -11,6 +11,7 @@ import type { ArenaType } from '@/use/useSpinnerCampaign'
 import type { SpinnerConfig } from '@/types/spinner'
 import { isSdkActive } from '@/use/useCrazyGames'
 import { isCrazyGamesFullRelease, isDebug } from '@/use/useMatch'
+import { seedMatchRng, seedMatchRngRandom } from '@/use/useDeterministicRng'
 
 // ─── Feature Gate ──────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ export type PvPMessage =
   | { type: 'game-config'; config: PvPGameConfig }
   | { type: 'player-ready'; team: SpinnerConfig[] }
   | { type: 'player-unready' }
-  | { type: 'game-start'; firstTurn: 'host' | 'guest' }
+  | { type: 'game-start'; firstTurn: 'host' | 'guest'; seed: number }
   | { type: 'launch'; bladeIndex: number; ax: number; ay: number }
   | { type: 'surrender' }
   | { type: 'state-check'; hash: string; turn: number }
@@ -324,6 +325,9 @@ const handleMessage = (msg: PvPMessage) => {
 
       case 'game-start':
         status.value = 'playing'
+        // Host broadcasts the match seed so both peers share the same RNG
+        // sequence for powerup spawns, turn-order roll, and stat picks.
+        seedMatchRng(msg.seed)
         onGameStart?.(msg.firstTurn)
         break
 
@@ -652,8 +656,11 @@ const usePVP = () => {
   const startMatch = () => {
     if (role.value !== 'host' || !bothReady.value) return
     const firstTurn = Math.random() < 0.5 ? 'host' : 'guest' as const
+    // Seed the shared match RNG locally and broadcast so the guest's
+    // mulberry32 state matches byte-for-byte.
+    const seed = seedMatchRngRandom()
     status.value = 'playing'
-    send({ type: 'game-start', firstTurn })
+    send({ type: 'game-start', firstTurn, seed })
     onGameStart?.(firstTurn)
   }
 
