@@ -264,5 +264,8 @@ export default {
     'diamond': 'Алмаз',
     'tsunami': 'Цунами',
     'sandstorm': 'Песчаная буря'
+  },
+  'skinChest': {
+    'acquired': '{name} получен!'
   }
 }

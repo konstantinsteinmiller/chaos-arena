@@ -276,5 +276,8 @@ export default {
     'all': 'Todas',
     'conquered': 'Conquistado',
     'random': 'Aleatorio'
+  },
+  'skinChest': {
+    'acquired': '¡{name} conseguido!'
   }
 }

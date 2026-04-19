@@ -264,5 +264,8 @@ export default {
     'diamond': '钻石',
     'tsunami': '海啸',
     'sandstorm': '沙尘暴'
+  },
+  'skinChest': {
+    'acquired': '获得{name}！'
   }
 }

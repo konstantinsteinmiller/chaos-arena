@@ -24,6 +24,8 @@ import DailyRewards from '@/components/organisms/DailyRewards.vue'
 import BattlePass from '@/components/organisms/BattlePass.vue'
 import useBattlePass from '@/use/useBattlePass'
 import TreasureChest from '@/components/organisms/TreasureChest.vue'
+import SkinChestTimer from '@/components/organisms/SkinChestTimer.vue'
+import type { GrantedSkin } from '@/use/useSkinChest'
 import AdRewardButton from '@/components/organisms/AdRewardButton.vue'
 import CoinBadge from '@/components/organisms/CoinBadge.vue'
 import { prependBaseUrl } from '@/utils/function'
@@ -272,6 +274,23 @@ const rouletteSkinResult = ref<RouletteResult | null>(null)
 const pendingBossReward = ref(false)
 const showRouletteReward = ref(false)
 const rouletteRewardReady = ref(false) // tap-to-continue unlocked
+
+// ─── Skin Chest (20h) ───────────────────────────────────────────────────────
+const skinChestReward = ref<GrantedSkin | null>(null)
+const showSkinChestReward = computed({
+  get: () => skinChestReward.value !== null,
+  set: (val: boolean) => {
+    if (!val) skinChestReward.value = null
+  }
+})
+
+const onSkinChestCollected = (granted: GrantedSkin) => {
+  skinChestReward.value = granted
+}
+
+const onSkinChestRewardContinue = () => {
+  skinChestReward.value = null
+}
 
 const resultText = computed(() => {
   if (gameResult.value === 'win') return t('spinner.youWin')
@@ -1006,6 +1025,8 @@ onUnmounted(() => {
             div.flex.flex-row.items-end.gap-1(v-if="!pvpMode")
               TreasureChest(:target-el="coinBadgeEl" :cooldown-ms="3 * 60 * 1000" storage-key="spinner_mini_chest_ready_at" :reward="25" :scale="0.5" aura-color="rgba(192,210,225,0.8)")
               TreasureChest(:target-el="coinBadgeEl")
+            //- 20h skin chest — compact timer row, hidden once every skin is owned
+            SkinChestTimer(v-if="!pvpMode" @collected="onSkinChestCollected")
 
       //- Center overlay messages
       div.absolute.flex.items-center.justify-center(class="inset-0 z-[10]")
@@ -1247,6 +1268,24 @@ onUnmounted(() => {
           div.flex.items-center.gap-3(ref="rouletteRewardCoinRef")
             IconCoin(class="w-8 h-8 text-yellow-300")
             span.text-yellow-400.font-black.game-text(class="text-3xl sm:text-5xl") +{{ Math.round(rewardAmount * rouletteMultiplier) }}
+
+    //- 20h Skin Chest reward
+    FReward(
+      v-model="showSkinChestReward"
+      :show-continue="true"
+      @continue="onSkinChestRewardContinue"
+    )
+      template(#ribbon)
+        span.text-white.font-black.uppercase.italic.game-text(class="sm:text-2xl") {{ t('spinner.rewards') }}
+      div.flex.flex-col.items-center.gap-6.roulette-reward-enter(v-if="skinChestReward")
+        div.roulette-reward-glow.flex.flex-col.items-center.gap-3
+          img.object-contain.drop-shadow-lg(
+            :src="modelImgPath(skinChestReward.modelId)"
+            :class="skinChestReward.isSpecial ? 'w-32 h-32 sm:w-40 sm:h-40' : 'w-24 h-24 sm:w-32 sm:h-32'"
+          )
+          span.font-black.game-text.uppercase(
+            :class="skinChestReward.isSpecial ? 'text-yellow-300 text-2xl sm:text-4xl' : 'text-purple-300 text-xl sm:text-3xl'"
+          ) {{ t('skinChest.acquired', { name: t(`skins.${skinChestReward.modelId}`) }) }}
 
     //- Options Modal
     OptionsModal(
