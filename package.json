@@ -94,6 +94,7 @@
     "electron-vite": "^5.0.0",
     "jsdom": "^28.1.0",
     "npm-run-all2": "^8.0.4",
+    "playwright": "^1.59.1",
     "postcss": "^8.5.8",
     "pug": "^3.0.3",
     "sass": "^1.97.3",

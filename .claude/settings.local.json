@@ -84,7 +84,15 @@
       "Bash(\"/c/Users/konst/AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe\" -version)",
       "Bash(command -v base64)",
       "Bash(cmd.exe /c \"echo hello| C:\\\\Users\\\\konst\\\\bin\\\\base64.cmd\")",
-      "Bash(cmd.exe *)"
+      "Bash(cmd.exe *)",
+      "Bash(command -v firefox)",
+      "Bash(command -v brave)",
+      "Read(//c/Program Files/BraveSoftware/Brave-Browser/Application/**)",
+      "Read(//c/Program Files/Mozilla Firefox/**)",
+      "Bash(pnpm dev *)",
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5174/)",
+      "Bash(git checkout *)"
     ]
   }
 }
