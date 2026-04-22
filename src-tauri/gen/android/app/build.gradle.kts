@@ -78,6 +78,23 @@ android {
     }
 }
 
+afterEvaluate {
+    tasks.matching { it.name.startsWith("bundle") && it.name.endsWith("Release") }.configureEach {
+        doLast {
+            val bundleRoot = layout.buildDirectory.dir("outputs/bundle").get().asFile
+            bundleRoot.listFiles()?.filter { it.isDirectory }?.forEach { variantDir ->
+                variantDir.listFiles { _, name -> name.endsWith(".aab") }?.forEach { aab ->
+                    val target = java.io.File(aab.parentFile, "${android.defaultConfig.applicationId}.aab")
+                    if (aab.name != target.name) {
+                        if (target.exists()) target.delete()
+                        aab.renameTo(target)
+                    }
+                }
+            }
+        }
+    }
+}
+
 rust {
     rootDirRel = "../../../"
 }

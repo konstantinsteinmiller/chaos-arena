@@ -65,11 +65,18 @@ export default defineConfig(({ mode, command }) => {
     'https://*.wavedash.com',
     'https://itch.io',
     'https://*.itch.io',
+    'https://glitch.fun',
+    'https://*.glitch.fun',
+    'https://www.clarity.ms',
     'https://api.jsonbin.io'
   ]
   // Extra per-directive sources that don't follow the blanket host pattern.
+  // Glitch.fun wraps the game in an iframe and injects inline bootstrap
+  // scripts (Aegis bridge, heartbeat, feature-policy probes), so script-src
+  // needs 'unsafe-inline' for that platform specifically.
+  const isGlitch = env.VITE_APP_GLITCH === 'true'
   const CSP_EXTRA: Record<string, string[]> = {
-    'script-src': [],
+    'script-src': isGlitch ? ['\'unsafe-inline\''] : [],
     'style-src': ['\'unsafe-inline\''],
     'img-src': ['data:'],
     'connect-src': [

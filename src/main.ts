@@ -12,8 +12,12 @@ import {
 import { GAME_USER_LANGUAGE } from '@/utils/constants.ts'
 import { LANGUAGES } from '@/utils/enums'
 import { initCrazyGames, crazyLocale } from '@/use/useCrazyGames'
-import useUser, { isCrazyWeb, isWaveDash } from '@/use/useUser'
+import useUser, { isCrazyWeb, isWaveDash, isGlitch } from '@/use/useUser'
 import { isDebug } from '@/use/useMatch.ts'
+
+if (isGlitch) {
+  import('@/utils/glitchPlugin.ts').then(({ glitchPlugin: glitchPlugin }) => glitchPlugin())
+}
 
 const bootstrap = async () => {
   // Platform SDK init — must happen before App loads.

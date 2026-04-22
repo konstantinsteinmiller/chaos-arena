@@ -94,7 +94,8 @@
       "Bash(curl -s http://localhost:5174/)",
       "Bash(git checkout *)",
       "Bash(pnpm exec *)",
-      "Bash(echo \"exit=$?\")"
+      "Bash(echo \"exit=$?\")",
+      "Bash(git rm *)"
     ]
   }
 }

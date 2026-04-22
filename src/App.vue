@@ -9,7 +9,8 @@ import { windowWidth, windowHeight } from '@/use/useUser'
 import useAssets from '@/use/useAssets'
 import FLogoProgress from '@/components/atoms/FLogoProgress.vue'
 import { useCrazyMuteSync } from '@/use/useCrazyMuteSync'
-import { isCrazyWeb, isWaveDash, isItch, orientation } from '@/use/useUser'
+import { isCrazyWeb, isWaveDash, isItch, isGlitch, orientation } from '@/use/useUser'
+import { glitchLicenseStatus } from '@/use/useGlitchLicense'
 
 const { t } = useI18n()
 const { initMusic, pauseMusic, continueMusic } = useMusic()
@@ -96,39 +97,41 @@ onUnmounted(() => {
   portraitQuery.removeEventListener('change', onOrientationChange)
 })
 
-function isCrazyGamesUrl() {
-  const hostname = window.location.hostname
-  const parts = hostname.split('.')
-  const idx = parts.indexOf('crazygames')
-  return idx !== -1 && idx >= parts.length - 3
+const hostname = window.location.hostname
+
+const isCrazyGamesUrl = () => hostname.includes('crazygames')
+const isWaveDashUrl = () => hostname.includes('wavedash')
+const isItchUrl = () => hostname.includes('itch') || hostname.includes('itch.io') || hostname.includes('itch.zone')
+const isGlitchUrl = () => {
+  if (hostname.includes('glitch.fun')) return true
+  // Glitch hosts the game bundle on a CDN and embeds it in an iframe whose
+  // parent is glitch.fun, so the iframe's own hostname won't match. Accept
+  // the parent frame's origin as proof of embed.
+  const parent = window.location.ancestorOrigins?.[0] ?? document.referrer
+  return /(^|\/\/)([^/]+\.)?glitch\.fun(\/|$)/.test(parent || '')
 }
 
-function isWaveDashUrl() {
-  const hostname = window.location.hostname
-  const parts = hostname.split('.')
-  const idx = parts.indexOf('wavedash')
-  return idx !== -1 && idx >= parts.length - 3
-}
-
-function isItchUrl() {
-  const hostname = window.location.hostname
-  return hostname.includes('itch') || hostname.includes('itch.io') || hostname.includes('itch.zone')
-}
-
-const isNotPlattformBuild = !isCrazyWeb && !isWaveDash && !isItch
+const isNotPlattformBuild = !isCrazyWeb && !isWaveDash && !isItch && !isGlitch
 const allowedToShowOnCrazyGames = computed(() => (isCrazyWeb && isCrazyGamesUrl()) || isNotPlattformBuild)
 const allowedToShowOnWaveDash = computed(() => (isWaveDash && isWaveDashUrl()) || isNotPlattformBuild)
 const allowedToShowOnItch = computed(() => (isItch && isItchUrl()) || isNotPlattformBuild)
+const allowedToShowOnGlitch = computed(() =>
+  (isGlitch && isGlitchUrl() && glitchLicenseStatus.value === 'ok') || isNotPlattformBuild
+)
+const isGlitchDenied = computed(() => isGlitch && glitchLicenseStatus.value === 'denied')
 </script>
 
 <template lang="pug">
-  div(v-if="allowedToShowOnCrazyGames || allowedToShowOnWaveDash || allowedToShowOnItch" id="app-root" class="h-screen h-dvh w-screen app-container root-protection game-ui-immune")
+  div(v-if="allowedToShowOnCrazyGames || allowedToShowOnWaveDash || allowedToShowOnItch || allowedToShowOnGlitch" id="app-root" class="h-screen h-dvh w-screen app-container root-protection game-ui-immune")
     FLogoProgress
     RouterView
 
-  div.relative.w-full.h-full(v-else-if="isCrazyWeb || isWaveDash || isItch")
+  div.relative.w-full.h-full(v-else-if="isGlitchDenied")
+    h1.absolute.text-red-500(class="left-1/2 -translate-x-[50%] top-1/2 -translate-y-[50%] text-3xl") Access Denied: Please purchase a license.
+
+  div.relative.w-full.h-full(v-else-if="(isCrazyWeb || isWaveDash || isItch || isGlitch) && glitchLicenseStatus !== 'pending'")
     h1.absolute(class="left-1/2 -translate-x-[50%] top-1/2 -translate-y-[50%] text-3xl") {{ t('crazyGamesOnly') }}
-      span.ml-2.text-amber-500 {{ isWaveDash ? 'wavedash.com':  isCrazyWeb ? 'crazygames.com' : isItch ? 'itch.io': ''}}
+      span.ml-2.text-amber-500 {{ isWaveDash ? 'wavedash.com':  isCrazyWeb ? 'crazygames.com' : isItch ? 'itch.io' : isGlitch ? 'glitch.fun': ''}}
 </template>
 
 <style lang="sass">
