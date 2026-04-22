@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -35,8 +36,9 @@ android {
         create("release") {
             keystoreProperties["keyAlias"]?.let { keyAlias = it as String }
             keystoreProperties["password"]?.let {
-                keyPassword = it as String
-                storePassword = it as String
+                val password = it as String
+                keyPassword = password
+                storePassword = password
             }
             keystoreProperties["storeFile"]?.let { storeFile = file(it as String) }
         }
@@ -84,7 +86,7 @@ afterEvaluate {
             val bundleRoot = layout.buildDirectory.dir("outputs/bundle").get().asFile
             bundleRoot.listFiles()?.filter { it.isDirectory }?.forEach { variantDir ->
                 variantDir.listFiles { _, name -> name.endsWith(".aab") }?.forEach { aab ->
-                    val target = java.io.File(aab.parentFile, "${android.defaultConfig.applicationId}.aab")
+                    val target = File(aab.parentFile, "${android.defaultConfig.applicationId}.aab")
                     if (aab.name != target.name) {
                         if (target.exists()) target.delete()
                         aab.renameTo(target)

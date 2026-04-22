@@ -99,7 +99,10 @@
       "Bash(pnpm test *)",
       "Read(//tmp/**)",
       "PowerShell(pnpm test *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "WebSearch",
+      "WebFetch(domain:support.google.com)",
+      "Bash(keytool -list -v -keystore \"C:/Users/konst/chaos-arena-release.keystore\" -alias chaos-arena -storepass \"Jilt934fear776\")"
     ]
   }
 }
