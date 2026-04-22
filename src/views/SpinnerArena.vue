@@ -908,10 +908,27 @@ onMounted(() => {
   // decode cost out of the initial FLogoProgress critical path so the
   // game boots faster, while still having everything ready by the time
   // the config modal is opened.
-  const { preloadRemainingSkins } = useAssets()
+  const { preloadRemainingSkins, preloadSkinsByIds } = useAssets()
   const kick = () => {
     preloadRemainingSkins()
   }
+  // Warm the next stage's enemy skins while the reward overlay is up.
+  // `advanceStage()` already fired inside the game-over watcher above, so
+  // `currentStage.value.enemyTeam` now points at the NEXT stage's
+  // enemies. The player typically spends ~3 s on the reward screen —
+  // more than enough for 2-4 skins to fetch + decode, so the first frame
+  // of the next match already has them cached instead of decoding
+  // mid-render and stalling the canvas.
+  watch(
+    () => showReward.value || showRoulette.value,
+    (open) => {
+      if (!open || gameResult.value !== 'win') return
+      const ids = currentStage.value.enemyTeam
+        .map(e => e.modelId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      if (ids.length > 0) preloadSkinsByIds(ids)
+    }
+  )
   if (typeof (window as any).requestIdleCallback === 'function') {
     (window as any).requestIdleCallback(kick, { timeout: 2000 })
   } else {

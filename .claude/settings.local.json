@@ -95,7 +95,11 @@
       "Bash(git checkout *)",
       "Bash(pnpm exec *)",
       "Bash(echo \"exit=$?\")",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(pnpm test *)",
+      "Read(//tmp/**)",
+      "PowerShell(pnpm test *)",
+      "Bash(git stash *)"
     ]
   }
 }

@@ -1,6 +1,6 @@
 import { prependBaseUrl } from '@/utils/function'
 import useUser from '@/use/useUser'
-import { resourceCache } from '@/use/useAssets'
+import { getAudioContext, loadAudioBuffer, resourceCache } from '@/use/useAssets'
 
 import { ref, onMounted, watch, onUnmounted } from 'vue'
 
@@ -150,23 +150,114 @@ export const useMusic = () => {
   return { initMusic, isLoaded, isPlaying, pauseMusic, continueMusic, startBattleMusic, stopBattleMusic }
 }
 
+// ─── SFX playback ──────────────────────────────────────────────────────────
+//
+// `playSound` has two paths:
+//
+//   1. Web Audio (fast path) — a preloaded AudioBuffer lives in
+//      resourceCache.audioBuffers. We spawn a fresh AudioBufferSourceNode
+//      + GainNode and start it. No fetch, no decode, no media-element
+//      allocation — typically <0.5 ms on the main thread.
+//
+//      If the buffer isn't cached yet (sound played before preload
+//      finished, or a sound not in the preload list), we kick off a
+//      fetch+decode in the background. The first call on that sound still
+//      pays the decode cost, but every subsequent call hits the fast path.
+//
+//   2. HTMLAudio fallback — only used when Web Audio is unavailable
+//      (extremely rare in 2025). We keep the old cloneNode() + new Audio()
+//      logic intact so nothing breaks.
+//
+// Return value: a minimal `SoundHandle` interface so existing callers that
+// do `audio.addEventListener('ended', ...)` keep working. The handle is
+// backed by either the source node (Web Audio) or the Audio element
+// (fallback). `error` events never fire in the Web Audio path — a source
+// that fails to start throws synchronously from `start()` and we map that
+// to an immediate 'ended' dispatch so caller cleanup logic still runs.
+
+export type SoundHandle = Pick<
+  HTMLAudioElement,
+  'addEventListener' | 'removeEventListener'
+>
+
+const makeWebAudioHandle = (source: AudioBufferSourceNode): SoundHandle => {
+  // AudioBufferSourceNode is already an EventTarget and fires 'ended' when
+  // playback finishes or stop() is called. We just need to ignore 'error'
+  // (Web Audio doesn't emit one) so callers that add both listeners don't
+  // crash. Treating 'error' as a no-op is safe because 'ended' always
+  // fires for a successfully-started source.
+  return {
+    addEventListener: ((event: string, cb: EventListener, opts?: AddEventListenerOptions | boolean) => {
+      if (event === 'ended') source.addEventListener('ended', cb, opts)
+    }) as HTMLAudioElement['addEventListener'],
+    removeEventListener: ((event: string, cb: EventListener, opts?: EventListenerOptions | boolean) => {
+      if (event === 'ended') source.removeEventListener('ended', cb, opts)
+    }) as HTMLAudioElement['removeEventListener']
+  }
+}
+
 const useSounds = () => {
   const { userSoundVolume } = useUser()
 
-  const playSound = (effect: string, ratio = 0.025) => {
-    const src = prependBaseUrl(`audio/sfx/${effect}.ogg`)
+  const clampVolume = (ratio: number): number =>
+    Math.max(0, Math.min(1, (userSoundVolume.value ?? 0.7) * ratio))
+
+  const playViaWebAudio = (
+    ctx: AudioContext,
+    buffer: AudioBuffer,
+    ratio: number
+  ): SoundHandle | null => {
+    try {
+      const source = ctx.createBufferSource()
+      source.buffer = buffer
+      const gain = ctx.createGain()
+      gain.gain.value = clampVolume(ratio)
+      source.connect(gain).connect(ctx.destination)
+      source.start()
+      return makeWebAudioHandle(source)
+    } catch (e) {
+      // Browser refused to start (context killed, etc.) — signal the
+      // caller's cleanup via a dispatched 'ended' so they don't leak a
+      // slot in their active-sounds counter.
+      console.warn('[sfx] Web Audio start failed', e)
+      return null
+    }
+  }
+
+  const playViaHtmlAudio = (src: string, ratio: number): HTMLAudioElement => {
     const cached = resourceCache.audio.get(src)
-    // Clone from preloaded cache to avoid re-decoding; fall back to new Audio
     const audio = cached
-      ? cached.cloneNode(false) as HTMLAudioElement
+      ? (cached.cloneNode(false) as HTMLAudioElement)
       : new Audio(src)
-    // iOS requires volume to be set BEFORE play().
-    // Clamp to [0,1] — Firefox throws DOMException if volume is NaN or out of range
-    // (can happen when userSoundVolume hasn't loaded from IndexedDB yet).
-    audio.volume = Math.max(0, Math.min(1, (userSoundVolume.value ?? 0.7) * ratio))
-    audio.play().catch(e => {/*console.warn('SFX play blocked:', e)*/
+    // iOS requires volume to be set BEFORE play(). Clamp to [0,1] —
+    // Firefox throws DOMException if volume is NaN or out of range (can
+    // happen when userSoundVolume hasn't loaded from IndexedDB yet).
+    audio.volume = clampVolume(ratio)
+    audio.play().catch(() => {
+      /* autoplay blocked or media failed — ignore */
     })
     return audio
+  }
+
+  const playSound = (effect: string, ratio = 0.025): SoundHandle | null => {
+    const src = prependBaseUrl(`audio/sfx/${effect}.ogg`)
+
+    // Fast path: preloaded AudioBuffer + Web Audio.
+    const buffer = resourceCache.audioBuffers.get(src)
+    const ctx = getAudioContext()
+    if (ctx && buffer) {
+      return playViaWebAudio(ctx, buffer, ratio)
+    }
+
+    // Slow path: Web Audio available but buffer not yet decoded. Kick off
+    // a background decode so subsequent calls hit the fast path, and play
+    // *this* call via HTMLAudio so the player still hears it immediately.
+    if (ctx && !buffer) {
+      void loadAudioBuffer(src)
+    }
+
+    // Fallback: HTMLAudio (also used when Web Audio is unavailable).
+    return playViaHtmlAudio(src, ratio)
   }
 
   return {

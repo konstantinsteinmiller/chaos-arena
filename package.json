@@ -20,7 +20,7 @@
     "deploy-demo": "vite build --mode demo && surge dist/ --domain chaos-arena-demo.surge.sh",
     "type-check": "vue-tsc --build",
     "format": "prettier --write --experimental-cli src",
-    "test": "vitest",
+    "test": "vitest -- run",
     "visualize-bundle": "npx vite-bundle-visualizer",
     "tauri": "tauri",
     "tauri:dev": "dotenv -e .env.tauri -- tauri dev",

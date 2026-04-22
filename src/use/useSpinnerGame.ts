@@ -20,7 +20,7 @@ import { DIFFICULTY } from '@/utils/enums'
 import { useScreenshake } from '@/use/useScreenshake'
 import useSounds from '@/use/useSound'
 import { prependBaseUrl } from '@/utils/function.ts'
-import { resourceCache } from '@/use/useAssets'
+import { getCachedImage, resourceCache } from '@/use/useAssets'
 import { drawLightningBolt } from '@/utils/lightning'
 import { matchRng, seedMatchRngRandom } from '@/use/useDeterministicRng'
 
@@ -109,11 +109,13 @@ const SPARK_SCALE = 0.28 // scale in game-space units relative to frameWidth
 
 // ─── Spritesheet Helpers ────────────────────────────────────────────────────
 
-function preloadImage(src: string): HTMLImageElement {
-  const img = new Image()
-  img.src = src
-  return img
-}
+// Thin alias over the module-level image cache. Every useSpinnerGame()
+// instantiation used to `new Image()` these every time, which triggered a
+// fresh fetch + decode per match. Routing through `getCachedImage`
+// means the browser decodes each VFX spritesheet exactly once for the
+// lifetime of the tab and every subsequent match reuses the same
+// HTMLImageElement — zero stutter even when many VFX fire at once.
+const preloadImage = getCachedImage
 
 function createSpritesheetAnim(
   image: HTMLImageElement,
@@ -223,6 +225,174 @@ const saveLastGameResult = (result: GameResult) => {
   lastGameResult.value = result
   if (result) localStorage.setItem(LAST_RESULT_KEY, result)
   else localStorage.removeItem(LAST_RESULT_KEY)
+}
+
+// ─── Skin auras ──────────────────────────────────────────────────────────
+//
+// Each renderer draws a specific skin's aura at the origin as a pure
+// function of `(R, now)`. Extracted from the inline `renderAura` switch
+// for readability; dispatch happens in `renderAura` further down.
+//
+// An earlier iteration baked these into an offscreen spritesheet and
+// replayed with `drawImage`. That cut primitive count but was a net
+// slowdown on Brave/Chromium: replacing 20 adjacent stroke/fill ops
+// with a single `drawImage` broke the batch kind and the backing
+// texture kept pathing through CPU memory. Kept the extracted
+// functions — they're the same work, just nicer to read.
+
+type AuraCtx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+
+const renderTornadoAura = (ctx: AuraCtx, R: number, now: number): void => {
+  // 1. Outer radial glow — swirling color gradient
+  const glowAngle = now * 0.002
+  ctx.save()
+  ctx.globalAlpha = 0.12 + 0.04 * Math.sin(now * 0.003)
+  const grd = ctx.createRadialGradient(0, 0, R * 0.2, 0, 0, R * 2.2)
+  grd.addColorStop(0, 'rgba(180,220,255,0.5)')
+  grd.addColorStop(0.5, 'rgba(120,180,240,0.2)')
+  grd.addColorStop(1, 'rgba(80,140,220,0)')
+  ctx.fillStyle = grd
+  ctx.beginPath()
+  ctx.arc(0, 0, R * 2.2, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+
+  // 2. Spiral wind trails — 3 interleaved arms rotating at different speeds
+  for (let arm = 0; arm < 3; arm++) {
+    const armPhase = glowAngle * (1.8 + arm * 0.3) + arm * (Math.PI * 2 / 3)
+    ctx.save()
+    ctx.globalAlpha = 0.18 - arm * 0.03
+    ctx.strokeStyle = arm === 0 ? '#cceeff' : arm === 1 ? '#99ccee' : '#77aadd'
+    ctx.lineWidth = 2 - arm * 0.3
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    const steps = 28
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps
+      const angle = armPhase + t * Math.PI * 2.5
+      const dist = R * (0.4 + t * 1.4)
+      const px = Math.cos(angle) * dist
+      const py = Math.sin(angle) * dist * 0.45  // flatten to elliptical
+      if (s === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  // 3. Concentric vortex rings — tilted ellipses narrowing toward center
+  const rings = 6
+  for (let r = 0; r < rings; r++) {
+    const phase = now * 0.005 + r * Math.PI * 0.33
+    const layerT = r / (rings - 1)
+    const ringR = R * (0.6 + layerT * 1.3)
+    const flatten = 0.2 + layerT * 0.15
+    const wobX = Math.sin(phase * 1.3) * 2
+    const wobY = Math.cos(phase * 0.7) * 1.5
+    ctx.save()
+    ctx.globalAlpha = 0.13 - layerT * 0.04
+    ctx.strokeStyle = `hsl(${200 + layerT * 20}, 70%, ${75 + layerT * 10}%)`
+    ctx.lineWidth = 1.8 - layerT * 0.5
+    ctx.beginPath()
+    ctx.ellipse(wobX, wobY, ringR, ringR * flatten, phase * 0.4, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  // 4. Debris particles — small dots orbiting at various speeds/radii
+  const debrisCount = 10
+  for (let d = 0; d < debrisCount; d++) {
+    const seed = d * 137.508 // golden angle
+    const orbitSpeed = 0.003 + (d % 3) * 0.0015
+    const orbitR = R * (0.7 + (d % 5) * 0.3)
+    const angle = now * orbitSpeed + seed
+    const px = Math.cos(angle) * orbitR
+    const py = Math.sin(angle) * orbitR * (0.3 + (d % 4) * 0.1)
+    const size = 1 + (d % 3) * 0.7
+    ctx.save()
+    ctx.globalAlpha = 0.3 + 0.2 * Math.sin(now * 0.01 + d)
+    ctx.fillStyle = d % 2 === 0 ? '#ddeeff' : '#aaccee'
+    ctx.beginPath()
+    ctx.arc(px, py, size, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+}
+
+const renderSandstormAura = (ctx: AuraCtx, R: number, now: number): void => {
+  // 1. Warm radial haze — dusty golden glow
+  const hazeAngle = now * 0.0015
+  ctx.save()
+  ctx.globalAlpha = 0.10 + 0.04 * Math.sin(now * 0.004)
+  const haze = ctx.createRadialGradient(0, 0, R * 0.3, 0, 0, R * 2.0)
+  haze.addColorStop(0, 'rgba(220,180,100,0.45)')
+  haze.addColorStop(0.5, 'rgba(190,150,80,0.18)')
+  haze.addColorStop(1, 'rgba(160,120,60,0)')
+  ctx.fillStyle = haze
+  ctx.beginPath()
+  ctx.arc(0, 0, R * 2.0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+
+  // 2. Spiral sand streams — 4 arms rotating with slight wobble
+  for (let arm = 0; arm < 4; arm++) {
+    const armPhase = hazeAngle * (1.5 + arm * 0.25) + arm * (Math.PI / 2)
+    ctx.save()
+    ctx.globalAlpha = 0.14 - arm * 0.02
+    ctx.strokeStyle = arm % 2 === 0 ? '#d4a855' : '#c49040'
+    ctx.lineWidth = 1.8 - arm * 0.2
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    const steps = 24
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps
+      const angle = armPhase + t * Math.PI * 2.2
+      const dist = R * (0.35 + t * 1.3)
+      const wobble = Math.sin(now * 0.005 + arm + t * 4) * 2
+      const px = Math.cos(angle) * dist + wobble
+      const py = Math.sin(angle) * dist * 0.5 + wobble * 0.5
+      if (s === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  // 3. Orbiting sand grains — 16 small particles at varying speeds/radii
+  const grainCount = 16
+  for (let g = 0; g < grainCount; g++) {
+    const seed = g * 137.508
+    const orbitSpeed = 0.0025 + (g % 4) * 0.0012
+    const orbitR = R * (0.5 + (g % 6) * 0.25)
+    const angle = now * orbitSpeed + seed
+    const flatten = 0.35 + (g % 3) * 0.12
+    const px = Math.cos(angle) * orbitR
+    const py = Math.sin(angle) * orbitR * flatten
+    const size = 0.8 + (g % 3) * 0.6
+    ctx.save()
+    ctx.globalAlpha = 0.35 + 0.2 * Math.sin(now * 0.008 + g * 0.7)
+    ctx.fillStyle = g % 3 === 0 ? '#e8c870' : g % 3 === 1 ? '#d4a855' : '#bf8f3a'
+    ctx.beginPath()
+    ctx.arc(px, py, size, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  // 4. Dust puffs — 5 larger translucent circles drifting outward
+  for (let p = 0; p < 5; p++) {
+    const phase = now * 0.002 + p * 1.2566 // golden ratio spacing
+    const drift = R * (0.8 + 0.6 * Math.sin(phase * 0.7 + p))
+    const px = Math.cos(phase) * drift
+    const py = Math.sin(phase) * drift * 0.4
+    const puffSize = R * (0.15 + 0.08 * Math.sin(now * 0.003 + p))
+    ctx.save()
+    ctx.globalAlpha = 0.06 + 0.03 * Math.sin(now * 0.005 + p * 2)
+    ctx.fillStyle = '#d4a855'
+    ctx.beginPath()
+    ctx.arc(px, py, puffSize, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
 }
 
 export const useSpinnerGame = () => {
@@ -618,11 +788,14 @@ export const useSpinnerGame = () => {
 
   // ─── Special Skin VFX ─────────────────────────────────────────────────────
 
-  // Dark smoke spritesheet (for 'dark' skin) — cloned from resourceCache
+  // Dark smoke spritesheet (for 'dark' skin). Reused directly from the
+  // shared resourceCache — no cloneNode: `ctx.drawImage` is read-only
+  // and many concurrent animations can sample different `sx/sy` offsets
+  // from the same HTMLImageElement without contention.
   const SMOKE_FRAMES = 10
   const SMOKE_FW = 128   // frame width
   const SMOKE_FH = 128   // frame height
-  const darkSmokeImg = resourceCache.images.get(prependBaseUrl('images/vfx/dark-smoke_1280x128.webp'))?.cloneNode() as HTMLImageElement | undefined
+  const darkSmokeImg = resourceCache.images.get(prependBaseUrl('images/vfx/dark-smoke_1280x128.webp'))
 
   interface CloudParticle {
     x: number;
@@ -640,8 +813,9 @@ export const useSpinnerGame = () => {
   const cloudParticles: CloudParticle[] = []
   const SMOKE_FRAME_MS = 70 // ms per frame
 
-  // Boulder ground destruction decals (for 'boulder' skin) — rendered under blades
-  const earthRipImg = resourceCache.images.get(prependBaseUrl('images/vfx/earth-rip-decal_138x138.webp'))?.cloneNode() as HTMLImageElement | undefined
+  // Boulder ground destruction decals (for 'boulder' skin). Same cache-
+  // reuse pattern as dark smoke above — no cloneNode needed.
+  const earthRipImg = resourceCache.images.get(prependBaseUrl('images/vfx/earth-rip-decal_138x138.webp'))
 
   interface GroundDecal {
     x: number;
@@ -4044,31 +4218,82 @@ export const useSpinnerGame = () => {
   }
 
   const renderMeteorShower = (ctx: CanvasRenderingContext2D) => {
-    for (const p of meteorParticles.value) {
-      // Skip particles still waiting for their delay
+    // Batched draw: every particle's streak and head go into ONE path per
+    // hue bucket, and we replace the per-particle fade with the bucket's
+    // mean alpha applied via `globalAlpha`. Net cost collapses from
+    // 2·N draw calls (stroke+fill per particle) to ≤4 — two strokes and
+    // two fills — regardless of particle count. The mean-alpha simplification
+    // is invisible in practice because every particle shares the same
+    // life/maxLife curve within a shower; they only differ in start delay,
+    // and that delay is already handled by the `p.life > p.maxLife` skip.
+    const particles = meteorParticles.value
+    if (particles.length === 0) return
+
+    // Single pass to accumulate each bucket's members + mean alpha. Hue
+    // split matches `spawnMeteorShower`: warm (~20–45°) vs cool (~190–230°).
+    let warmCount = 0
+    let warmAlphaSum = 0
+    let coolCount = 0
+    let coolAlphaSum = 0
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i]!
       if (p.life > p.maxLife) continue
       const alpha = (p.life / p.maxLife) * 0.8
-      const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy)
-      const tailLen = spd * 4
+      if (p.hue < 100) {
+        warmCount++
+        warmAlphaSum += alpha
+      } else {
+        coolCount++
+        coolAlphaSum += alpha
+      }
+    }
 
-      // Direction of motion for elongated streak
-      const nx = spd > 0.01 ? p.vx / spd : 0
-      const ny = spd > 0.01 ? p.vy / spd : 0
+    if (warmCount === 0 && coolCount === 0) return
 
-      ctx.strokeStyle = `hsla(${p.hue}, 90%, 70%, ${alpha})`
-      ctx.lineWidth = 2
-      ctx.lineCap = 'round'
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+
+    const drawBucket = (
+      isWarm: boolean,
+      count: number,
+      alpha: number
+    ): void => {
+      if (count === 0) return
+      ctx.globalAlpha = alpha
+      // Streaks — one stroke pass for all particles in the bucket.
+      ctx.strokeStyle = isWarm ? 'hsl(32, 90%, 70%)' : 'hsl(210, 90%, 70%)'
       ctx.beginPath()
-      ctx.moveTo(p.x - nx * tailLen, p.y - ny * tailLen)
-      ctx.lineTo(p.x, p.y)
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i]!
+        if (p.life > p.maxLife) continue
+        if ((p.hue < 100) !== isWarm) continue
+        const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy)
+        const tailLen = spd * 4
+        const nx = spd > 0.01 ? p.vx / spd : 0
+        const ny = spd > 0.01 ? p.vy / spd : 0
+        ctx.moveTo(p.x - nx * tailLen, p.y - ny * tailLen)
+        ctx.lineTo(p.x, p.y)
+      }
       ctx.stroke()
 
-      // Bright head
-      ctx.fillStyle = `hsla(${p.hue}, 90%, 90%, ${alpha})`
+      // Heads — one fill pass. Using `moveTo` before each arc breaks the
+      // subpath so the filled shapes don't connect.
+      ctx.fillStyle = isWarm ? 'hsl(32, 90%, 90%)' : 'hsl(210, 90%, 90%)'
       ctx.beginPath()
-      ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2)
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i]!
+        if (p.life > p.maxLife) continue
+        if ((p.hue < 100) !== isWarm) continue
+        ctx.moveTo(p.x + 1.5, p.y)
+        ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2)
+      }
       ctx.fill()
     }
+
+    drawBucket(true, warmCount, warmCount > 0 ? warmAlphaSum / warmCount : 0)
+    drawBucket(false, coolCount, coolCount > 0 ? coolAlphaSum / coolCount : 0)
+
+    ctx.globalAlpha = 1
     ctx.lineCap = 'butt'
   }
 
@@ -4076,177 +4301,24 @@ export const useSpinnerGame = () => {
     const isPlayer = blade.owner === 'player'
     const mid = blade.config.modelId
 
-    // ── Tornado skin aura ──────────────────────────────────────────────
+    // Direct render — an offscreen spritesheet cache was tried and
+    // rolled back; see the note on the extracted `renderTornadoAura` /
+    // `renderSandstormAura` at the top of the file.
     if (mid === 'tornado') {
-      const now = performance.now()
-      const R = blade.radius
       ctx.save()
       ctx.translate(blade.x, blade.y)
-
-      // 1. Outer radial glow — swirling color gradient
-      const glowAngle = now * 0.002
-      ctx.save()
-      ctx.globalAlpha = 0.12 + 0.04 * Math.sin(now * 0.003)
-      const grd = ctx.createRadialGradient(0, 0, R * 0.2, 0, 0, R * 2.2)
-      grd.addColorStop(0, 'rgba(180,220,255,0.5)')
-      grd.addColorStop(0.5, 'rgba(120,180,240,0.2)')
-      grd.addColorStop(1, 'rgba(80,140,220,0)')
-      ctx.fillStyle = grd
-      ctx.beginPath()
-      ctx.arc(0, 0, R * 2.2, 0, Math.PI * 2)
-      ctx.fill()
+      renderTornadoAura(ctx, blade.radius, performance.now())
       ctx.restore()
-
-      // 2. Spiral wind trails — 3 interleaved arms rotating at different speeds
-      for (let arm = 0; arm < 3; arm++) {
-        const armPhase = glowAngle * (1.8 + arm * 0.3) + arm * (Math.PI * 2 / 3)
-        ctx.save()
-        ctx.globalAlpha = 0.18 - arm * 0.03
-        ctx.strokeStyle = arm === 0 ? '#cceeff' : arm === 1 ? '#99ccee' : '#77aadd'
-        ctx.lineWidth = 2 - arm * 0.3
-        ctx.lineCap = 'round'
-        ctx.beginPath()
-        const steps = 28
-        for (let s = 0; s <= steps; s++) {
-          const t = s / steps
-          const angle = armPhase + t * Math.PI * 2.5
-          const dist = R * (0.4 + t * 1.4)
-          const px = Math.cos(angle) * dist
-          const py = Math.sin(angle) * dist * 0.45  // flatten to elliptical
-          if (s === 0) ctx.moveTo(px, py)
-          else ctx.lineTo(px, py)
-        }
-        ctx.stroke()
-        ctx.restore()
-      }
-
-      // 3. Concentric vortex rings — tilted ellipses narrowing toward center
-      const rings = 6
-      for (let r = 0; r < rings; r++) {
-        const phase = now * 0.005 + r * Math.PI * 0.33
-        const layerT = r / (rings - 1)
-        const ringR = R * (0.6 + layerT * 1.3)
-        const flatten = 0.2 + layerT * 0.15
-        const wobX = Math.sin(phase * 1.3) * 2
-        const wobY = Math.cos(phase * 0.7) * 1.5
-        ctx.save()
-        ctx.globalAlpha = 0.13 - layerT * 0.04
-        ctx.strokeStyle = `hsl(${200 + layerT * 20}, 70%, ${75 + layerT * 10}%)`
-        ctx.lineWidth = 1.8 - layerT * 0.5
-        ctx.beginPath()
-        ctx.ellipse(wobX, wobY, ringR, ringR * flatten, phase * 0.4, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.restore()
-      }
-
-      // 4. Debris particles — small dots orbiting at various speeds/radii
-      const debrisCount = 10
-      for (let d = 0; d < debrisCount; d++) {
-        // Deterministic per-particle seed so each has a stable orbit
-        const seed = d * 137.508 // golden angle
-        const orbitSpeed = 0.003 + (d % 3) * 0.0015
-        const orbitR = R * (0.7 + (d % 5) * 0.3)
-        const angle = now * orbitSpeed + seed
-        const px = Math.cos(angle) * orbitR
-        const py = Math.sin(angle) * orbitR * (0.3 + (d % 4) * 0.1)
-        const size = 1 + (d % 3) * 0.7
-        ctx.save()
-        ctx.globalAlpha = 0.3 + 0.2 * Math.sin(now * 0.01 + d)
-        ctx.fillStyle = d % 2 === 0 ? '#ddeeff' : '#aaccee'
-        ctx.beginPath()
-        ctx.arc(px, py, size, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.restore()
-      }
-
-      ctx.restore()
-    }
-
-    // ── Sandstorm skin aura ───────────────────────────────────────────
-    if (mid === 'sandstorm') {
-      const now = performance.now()
-      const R = blade.radius
+    } else if (mid === 'sandstorm') {
       ctx.save()
       ctx.translate(blade.x, blade.y)
-
-      // 1. Warm radial haze — dusty golden glow
-      const hazeAngle = now * 0.0015
-      ctx.save()
-      ctx.globalAlpha = 0.10 + 0.04 * Math.sin(now * 0.004)
-      const haze = ctx.createRadialGradient(0, 0, R * 0.3, 0, 0, R * 2.0)
-      haze.addColorStop(0, 'rgba(220,180,100,0.45)')
-      haze.addColorStop(0.5, 'rgba(190,150,80,0.18)')
-      haze.addColorStop(1, 'rgba(160,120,60,0)')
-      ctx.fillStyle = haze
-      ctx.beginPath()
-      ctx.arc(0, 0, R * 2.0, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.restore()
-
-      // 2. Spiral sand streams — 4 arms rotating with slight wobble
-      for (let arm = 0; arm < 4; arm++) {
-        const armPhase = hazeAngle * (1.5 + arm * 0.25) + arm * (Math.PI / 2)
-        ctx.save()
-        ctx.globalAlpha = 0.14 - arm * 0.02
-        ctx.strokeStyle = arm % 2 === 0 ? '#d4a855' : '#c49040'
-        ctx.lineWidth = 1.8 - arm * 0.2
-        ctx.lineCap = 'round'
-        ctx.beginPath()
-        const steps = 24
-        for (let s = 0; s <= steps; s++) {
-          const t = s / steps
-          const angle = armPhase + t * Math.PI * 2.2
-          const dist = R * (0.35 + t * 1.3)
-          const wobble = Math.sin(now * 0.005 + arm + t * 4) * 2
-          const px = Math.cos(angle) * dist + wobble
-          const py = Math.sin(angle) * dist * 0.5 + wobble * 0.5
-          if (s === 0) ctx.moveTo(px, py)
-          else ctx.lineTo(px, py)
-        }
-        ctx.stroke()
-        ctx.restore()
-      }
-
-      // 3. Orbiting sand grains — 16 small particles at varying speeds/radii
-      const grainCount = 16
-      for (let g = 0; g < grainCount; g++) {
-        const seed = g * 137.508
-        const orbitSpeed = 0.0025 + (g % 4) * 0.0012
-        const orbitR = R * (0.5 + (g % 6) * 0.25)
-        const angle = now * orbitSpeed + seed
-        const flatten = 0.35 + (g % 3) * 0.12
-        const px = Math.cos(angle) * orbitR
-        const py = Math.sin(angle) * orbitR * flatten
-        const size = 0.8 + (g % 3) * 0.6
-        ctx.save()
-        ctx.globalAlpha = 0.35 + 0.2 * Math.sin(now * 0.008 + g * 0.7)
-        ctx.fillStyle = g % 3 === 0 ? '#e8c870' : g % 3 === 1 ? '#d4a855' : '#bf8f3a'
-        ctx.beginPath()
-        ctx.arc(px, py, size, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.restore()
-      }
-
-      // 4. Dust puffs — 5 larger translucent circles drifting outward
-      for (let p = 0; p < 5; p++) {
-        const phase = now * 0.002 + p * 1.2566 // golden ratio spacing
-        const drift = R * (0.8 + 0.6 * Math.sin(phase * 0.7 + p))
-        const px = Math.cos(phase) * drift
-        const py = Math.sin(phase) * drift * 0.4
-        const puffSize = R * (0.15 + 0.08 * Math.sin(now * 0.003 + p))
-        ctx.save()
-        ctx.globalAlpha = 0.06 + 0.03 * Math.sin(now * 0.005 + p * 2)
-        ctx.fillStyle = '#d4a855'
-        ctx.beginPath()
-        ctx.arc(px, py, puffSize, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.restore()
-      }
-
+      renderSandstormAura(ctx, blade.radius, performance.now())
       ctx.restore()
     }
 
     // ── Thunderstorm skin aura ─────────────────────────────────────────
+    // Direct path: bolt jitter uses `boltSeed = Math.floor(now/100)`
+    // and randomised branch geometry per frame.
     if (mid === 'thunderstorm') {
       const now = performance.now()
       // Refresh bolt geometry every 100ms for crackling effect
@@ -4477,6 +4549,14 @@ export const useSpinnerGame = () => {
 
   const _hpFontCache = new Map<string, number>()
 
+  // Inline the ring every frame. An earlier attempt cached the whole
+  // ring (bg stroke + HP arc + strokeText + fillText) into a per-blade
+  // OffscreenCanvas and replaced it with a single drawImage. On paper
+  // that cut draw calls; in practice it slowed down Chromium / Brave
+  // because `drawImage` is a different batch kind than `stroke`/`fill`,
+  // so each blade forced an extra GPU batch flush. The four-primitive
+  // inline path is faster because it groups naturally with the team-
+  // aura `fill` that follows.
   const renderHealthRing = (
     ctx: CanvasRenderingContext2D,
     x: number, y: number,
@@ -4510,7 +4590,6 @@ export const useSpinnerGame = () => {
     // HP number (dynamically sized to fit inside the ring)
     const hpText = Math.ceil(hp).toString()
     const innerDiameter = (ringR - ringWidth) * 2
-    // Cache key: text length + inner diameter (rounded) — avoids measureText loop per frame
     const cacheKey = `${hpText.length}_${Math.round(innerDiameter)}`
     let fontSize = _hpFontCache.get(cacheKey)
     if (fontSize === undefined) {

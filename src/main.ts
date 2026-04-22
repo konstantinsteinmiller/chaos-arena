@@ -11,13 +11,12 @@ import {
 } from '@/i18n'
 import { GAME_USER_LANGUAGE } from '@/utils/constants.ts'
 import { LANGUAGES } from '@/utils/enums'
-import { initCrazyGames, crazyLocale } from '@/use/useCrazyGames'
+import { initCrazyGames, createCrazyGamesSaveStrategy, crazyLocale } from '@/use/useCrazyGames'
 import useUser, { isCrazyWeb, isWaveDash, isGlitch } from '@/use/useUser'
 import { isDebug } from '@/use/useMatch.ts'
-
-if (isGlitch) {
-  import('@/utils/glitchPlugin.ts').then(({ glitchPlugin: glitchPlugin }) => glitchPlugin())
-}
+import { SaveManager } from '@/utils/save/SaveManager'
+import { LocalStorageStrategy } from '@/utils/save/LocalStorageStrategy'
+import type { SaveStrategy } from '@/utils/save/types'
 
 const bootstrap = async () => {
   // Platform SDK init — must happen before App loads.
@@ -30,6 +29,25 @@ const bootstrap = async () => {
     } catch (e) {
       console.warn('[Wavedash] SDK init failed:', e)
     }
+  }
+
+  // Pick the save strategy by build flag. `SaveManager.init()` hydrates
+  // localStorage from the chosen backend and then patches
+  // `localStorage.setItem` / `removeItem` to mirror writes back. Must
+  // resolve before `@/App.vue` is imported because many composables read
+  // `localStorage` at module-evaluation time.
+  const strategy: SaveStrategy = isGlitch
+    ? ((await import('@/utils/glitchPlugin')).createGlitchSaveStrategy() ?? new LocalStorageStrategy())
+    : isCrazyWeb
+      ? createCrazyGamesSaveStrategy()
+      : new LocalStorageStrategy()
+  const saveManager = new SaveManager(strategy)
+  await saveManager.init()
+  ;(window as any).__saveManager = saveManager
+
+  if (isGlitch) {
+    const { glitchPlugin } = await import('@/utils/glitchPlugin')
+    glitchPlugin()
   }
 
   // If CrazyGames reported a supported player locale, persist it as the
