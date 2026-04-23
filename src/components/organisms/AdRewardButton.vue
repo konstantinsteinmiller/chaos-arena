@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import IconCoin from '@/components/icons/IconCoin.vue'
-import { isSdkActive, showRewardedAd } from '@/use/useCrazyGames'
+import { isAdsReady, showRewardedAd } from '@/use/useAds'
 import useSpinnerConfig from '@/use/useSpinnerConfig'
-import { isCrazyGamesFullRelease } from '@/use/useMatch'
 
 interface Props {
   /** How many coins the player gets after watching the ad. */
@@ -21,8 +20,8 @@ const emit = defineEmits<{
 const { addCoins } = useSpinnerConfig()
 const rootEl = ref<HTMLElement | null>(null)
 
-// Triggers a rewarded video ad via the CrazyGames SDK. Coins are only
-// granted once the video played all the way through.
+// Coins are only granted once the rewarded video played all the way
+// through — whichever ad provider the active build selected.
 const triggerAdReward = async () => {
   const ok = await showRewardedAd()
   if (ok) grantReward()
@@ -37,7 +36,7 @@ const grantReward = () => {
 <template lang="pug">
   button.adReward.group.cursor-pointer.z-10.transition-transform(
     ref="rootEl"
-    v-if="isSdkActive && isCrazyGamesFullRelease"
+    v-if="isAdsReady"
     class="hover:scale-[103%] active:scale-90 scale-80 sm:scale-110"
     @click="triggerAdReward"
   )

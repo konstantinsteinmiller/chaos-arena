@@ -12,6 +12,7 @@ import {
 import { GAME_USER_LANGUAGE } from '@/utils/constants.ts'
 import { LANGUAGES } from '@/utils/enums'
 import { initCrazyGames, createCrazyGamesSaveStrategy, crazyLocale } from '@/use/useCrazyGames'
+import { initAds } from '@/use/useAds'
 import useUser, { isCrazyWeb, isWaveDash, isGlitch } from '@/use/useUser'
 import { isDebug } from '@/use/useMatch.ts'
 import { SaveManager } from '@/utils/save/SaveManager'
@@ -138,6 +139,15 @@ const bootstrap = async () => {
   app.use(i18n)
 
   app.mount('#app')
+
+  // Kick off the ad provider's init after mount. For CrazyGames the
+  // SDK is already up (initCrazyGames ran above) so this is a no-op;
+  // for LevelPlay the native bridge needs the Android Activity / iOS
+  // ViewController to be alive, which is true once the webview has
+  // rendered. Never awaited — ads are not on the critical path, and
+  // placements stay hidden via `isAdsReady` until the provider signals
+  // ready.
+  void initAds().catch((e) => console.warn('[ads] init failed', e))
 
   // Signal to Wavedash that the game is fully loaded and ready
   if (isWaveDash) {

@@ -40,17 +40,15 @@ import usePVP from '@/use/usePVP'
 import usePvpStats, { calcHonorPoints } from '@/use/usePvpStats'
 import useLeaderboard, { type LeaderboardEntry } from '@/use/useLeaderboard'
 import {
-  isSdkActive,
   startGameplay,
   stopGameplay,
-  showRewardedAd,
-  showMidgameAd,
   triggerHappytime
 } from '@/use/useCrazyGames'
+import { isAdsReady, showRewardedAd, showMidgameAd } from '@/use/useAds'
 import useBottomSafe from '@/use/useBottomSafe'
 import { getSelectedSkin, modelImgPath } from '@/use/useModels'
 import useAssets from '@/use/useAssets'
-import { isCrazyGamesFullRelease, isDebug } from '@/use/useMatch.ts'
+import { isDebug } from '@/use/useMatch.ts'
 import { spawnCoinExplosion } from '@/use/useCoinExplosion'
 import useCheats from '@/use/useCheats'
 import { cheatRouletteSignal } from '@/use/useCheats'
@@ -688,7 +686,7 @@ const onRouletteRewardContinue = async () => {
   // Boss-win path is campaign-only (never PvP/ghost), so threshold is 4.
   // No surrender check needed: you can't surrender after winning the boss.
   incrementAdCounter()
-  if (isCrazyGamesFullRelease && isSdkActive.value && battlesSinceAd.value >= 4) {
+  if (isAdsReady.value && battlesSinceAd.value >= 4) {
     resetAdCounter()
     await showMidgameAd()
   }
@@ -756,7 +754,7 @@ const onRewardContinue = async () => {
   if (!wasSurrender) incrementAdCounter()
 
   // Show interstitial when the counter reaches the threshold
-  if (isCrazyGamesFullRelease && isSdkActive.value && battlesSinceAd.value >= adThreshold) {
+  if (isAdsReady.value && battlesSinceAd.value >= adThreshold) {
     resetAdCounter()
     await showMidgameAd()
   }
@@ -1238,7 +1236,7 @@ onUnmounted(() => {
       )
         //- Row 1: speed switch (hidden during spotlight)
         FButtonSwitch.speedup-switch.scale-90(
-          v-if="(isSdkActive && isCrazyGamesFullRelease && !showConfigSpotlight) || isDebug"
+          v-if="(isAdsReady && !showConfigSpotlight) || isDebug"
           class="sm:scale-100"
           :model-value="simSpeed"
           :options="[{ value: 1 }, { value: 2 }]"
