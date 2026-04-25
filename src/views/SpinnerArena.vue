@@ -44,11 +44,10 @@ import {
   stopGameplay,
   triggerHappytime
 } from '@/use/useCrazyGames'
-import { isAdsReady, showRewardedAd, showMidgameAd } from '@/use/useAds'
+import { isRewardedReady, isInterstitialReady, showRewardedAd, showMidgameAd } from '@/use/useAds'
 import useBottomSafe from '@/use/useBottomSafe'
 import { getSelectedSkin, modelImgPath } from '@/use/useModels'
 import useAssets from '@/use/useAssets'
-import { isDebug } from '@/use/useMatch.ts'
 import { spawnCoinExplosion } from '@/use/useCoinExplosion'
 import useCheats from '@/use/useCheats'
 import { cheatRouletteSignal } from '@/use/useCheats'
@@ -425,16 +424,19 @@ const updateSpeedBoost = () => {
 }
 
 const onSpeedSwitchClick = (value: 1 | 2) => {
-  if (isDebug.value && value === 2) {
-    speedBoostExpiresAt.value = Date.now() + SPEED_BOOST_DURATION_MS
-    localStorage.setItem(SPEED_BOOST_KEY, String(speedBoostExpiresAt.value))
-    simSpeed.value = 2
-    return
-  }
+  // if (isDebug.value && value === 2) {
+  //   speedBoostExpiresAt.value = Date.now() + SPEED_BOOST_DURATION_MS
+  //   localStorage.setItem(SPEED_BOOST_KEY, String(speedBoostExpiresAt.value))
+  //   simSpeed.value = 2
+  //   return
+  // }
   if (value === 1) {
     simSpeed.value = 1
     return
   }
+  // Player tapped 2x. If a boost is already active (paid for in a
+  // previous session and still inside its duration window), just flip
+  // the sim — no ad. Otherwise charge an ad for a fresh boost.
   if (is2xAvailable.value) {
     simSpeed.value = 2
     return
@@ -686,7 +688,7 @@ const onRouletteRewardContinue = async () => {
   // Boss-win path is campaign-only (never PvP/ghost), so threshold is 4.
   // No surrender check needed: you can't surrender after winning the boss.
   incrementAdCounter()
-  if (isAdsReady.value && battlesSinceAd.value >= 4) {
+  if (isInterstitialReady.value && battlesSinceAd.value >= 4) {
     resetAdCounter()
     await showMidgameAd()
   }
@@ -754,7 +756,7 @@ const onRewardContinue = async () => {
   if (!wasSurrender) incrementAdCounter()
 
   // Show interstitial when the counter reaches the threshold
-  if (isAdsReady.value && battlesSinceAd.value >= adThreshold) {
+  if (isInterstitialReady.value && battlesSinceAd.value >= adThreshold) {
     resetAdCounter()
     await showMidgameAd()
   }
@@ -1236,7 +1238,7 @@ onUnmounted(() => {
       )
         //- Row 1: speed switch (hidden during spotlight)
         FButtonSwitch.speedup-switch.scale-90(
-          v-if="(isAdsReady && !showConfigSpotlight) || isDebug"
+          v-if="(isRewardedReady || is2xAvailable) && !showConfigSpotlight"
           class="sm:scale-100"
           :model-value="simSpeed"
           :options="[{ value: 1 }, { value: 2 }]"

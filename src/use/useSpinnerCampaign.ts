@@ -138,7 +138,7 @@ const BASE_STAGES: Stage[] = [
   ], 200, 60, { arenaType: 'forest' }),
   // 10 — SPLIT boss (archetype 2)
   s(10, 'stage_10', [
-    e('round', 'tanky', 3, 2, 'bear', 'split')
+    e('round', 'balanced', 3, 1, 'bear', 'split')
   ], 350, 90, { isBoss: true }),
   s(11, 'stage_11', [
     e('triangle', 'speedy', 3, 3, 'thunderstorm', 'thunder'),
@@ -183,8 +183,8 @@ const BASE_STAGES: Stage[] = [
   // 20 — PARTNERS boss (archetype 4)
   s(20, 'stage_20', [
     e('cushioned', 'tanky', 5, 3, 'castle', 'partners'),
-    e('round', 'tanky', 4, 3, 'piranha', 'partners'),
-    e('quadratic', 'balanced', 5, 3, 'mysticaleye', 'partners')
+    e('round', 'balanced', 3, 2, 'piranha', 'partners'),
+    e('quadratic', 'balanced', 4, 3, 'mysticaleye', 'partners')
   ], 500, 130, { isBoss: true }),
 
   // ── Mid Game (21-50) ──────────────────────────────────────────────────────

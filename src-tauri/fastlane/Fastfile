@@ -4,18 +4,43 @@ platform :ios do
   desc "Install App Store distribution cert + profile into the CI keychain (readonly in CI)"
   lane :certificates do
     setup_ci if is_ci
+    install_wwdr_certs! if is_ci
     match(type: "appstore", api_key: bootstrap_api_key, readonly: is_ci)
   end
 
   desc "Install Ad Hoc distribution cert + profile into the CI keychain (readonly in CI)"
   lane :adhoc_certificates do
     setup_ci if is_ci
+    install_wwdr_certs! if is_ci
     match(type: "adhoc", api_key: bootstrap_api_key, readonly: is_ci)
+  end
+
+  # Apple rotates the WWDR intermediate cert (G2–G6 in current rotation)
+  # and Fastlane's `match` tries to scrape Apple's CA page to install one
+  # itself — that scraper breaks every time Apple touches the page layout
+  # and surfaces as the cryptic "Could not install WWDR certificate"
+  # error mid-lane. We pre-install the current rotation directly from
+  # Apple's CDN into the temporary CI keychain that `setup_ci` just
+  # created. `match`'s own WWDR install then sees a cert already present
+  # and short-circuits. Idempotent — silent if a cert generation is
+  # offline or already installed.
+  def install_wwdr_certs!
+    keychain = ENV["MATCH_KEYCHAIN_NAME"] || "fastlane_tmp_keychain"
+    keychain_path = File.expand_path("~/Library/Keychains/#{keychain}-db")
+    swallow = ->(_status) {}
+    %w[G2 G3 G4 G5 G6].each do |gen|
+      cert_url = "https://www.apple.com/certificateauthority/AppleWWDRCA#{gen}.cer"
+      cert_path = "/tmp/AppleWWDRCA#{gen}.cer"
+      sh("curl -sSLf -o #{cert_path.shellescape} #{cert_url}", log: false, error_callback: swallow)
+      next unless File.exist?(cert_path)
+      sh("security import #{cert_path.shellescape} -k #{keychain_path.shellescape} -T /usr/bin/codesign -T /usr/bin/productbuild", log: false, error_callback: swallow)
+    end
   end
 
   desc "Bootstrap: register App ID if missing, create distribution cert + App Store profile, push to match repo"
   lane :bootstrap do
     setup_ci if is_ci
+    install_wwdr_certs! if is_ci
     api_key = bootstrap_api_key
     register_app_id_if_missing(api_key)
     match(type: "appstore", api_key: api_key, readonly: false)
@@ -24,6 +49,7 @@ platform :ios do
   desc "Bootstrap: force-recreate the App Store provisioning profile"
   lane :bootstrap_force do
     setup_ci if is_ci
+    install_wwdr_certs! if is_ci
     api_key = bootstrap_api_key
     register_app_id_if_missing(api_key)
     match(type: "appstore", api_key: api_key, readonly: false, force: true)
@@ -32,6 +58,7 @@ platform :ios do
   desc "Bootstrap: force-recreate BOTH the distribution cert and the profile (use when the match repo is missing a .cer)"
   lane :bootstrap_force_certs do
     setup_ci if is_ci
+    install_wwdr_certs! if is_ci
     api_key = bootstrap_api_key
     register_app_id_if_missing(api_key)
     match(
@@ -99,6 +126,7 @@ platform :ios do
   desc "Bootstrap: create Ad Hoc cert + profile listing all registered devices, push to match repo"
   lane :bootstrap_adhoc do
     setup_ci if is_ci
+    install_wwdr_certs! if is_ci
     api_key = bootstrap_api_key
     register_app_id_if_missing(api_key)
     # force_for_new_devices regenerates the profile whenever new device UDIDs
@@ -115,6 +143,7 @@ platform :ios do
   desc "Bootstrap: force-recreate BOTH the Ad Hoc cert and the profile (use when the match repo is missing the ad-hoc .cer)"
   lane :bootstrap_adhoc_force_certs do
     setup_ci if is_ci
+    install_wwdr_certs! if is_ci
     api_key = bootstrap_api_key
     register_app_id_if_missing(api_key)
     match(

@@ -6,7 +6,8 @@ import useSound from '@/use/useSound.ts'
 
 const debugSaved = localStorage.getItem('debug') || 'false'
 const campaignTestSaved = localStorage.getItem('campaign-test') || 'false'
-export const isDebug = ref(!!JSON.parse(debugSaved))
+const envDebug = import.meta.env.VITE_APP_DEBUG === 'true'
+export const isDebug = ref(!!JSON.parse(debugSaved) || envDebug)
 export const isCrazyGamesFullRelease = import.meta.env.VITE_APP_CRAZY_GAMES_FULL_RELEASE === 'true'
 export const isCampaignTest = ref(!!JSON.parse(campaignTestSaved))
 

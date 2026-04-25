@@ -6,11 +6,13 @@ import { mobileCheck } from '@/utils/function'
 import { useMusic } from '@/use/useSound'
 import { useExtensionGuard } from '@/use/useExtensionGuard'
 import { windowWidth, windowHeight } from '@/use/useUser'
+import { isDebug } from '@/use/useMatch'
 import useAssets from '@/use/useAssets'
 import FLogoProgress from '@/components/atoms/FLogoProgress.vue'
 import FPerfMeter from '@/components/atoms/FPerfMeter.vue'
+import LevelPlayDebugOverlay from '@/components/atoms/LevelPlayDebugOverlay.vue'
 import { useCrazyMuteSync } from '@/use/useCrazyMuteSync'
-import { isCrazyWeb, isWaveDash, isItch, isGlitch, orientation } from '@/use/useUser'
+import { isCrazyWeb, isWaveDash, isItch, isGlitch, isGameDistribution, isNative, orientation } from '@/use/useUser'
 import { glitchLicenseStatus } from '@/use/useGlitchLicense'
 
 const { t } = useI18n()
@@ -111,29 +113,45 @@ const isGlitchUrl = () => {
   const parent = window.location.ancestorOrigins?.[0] ?? document.referrer
   return /(^|\/\/)([^/]+\.)?glitch\.fun(\/|$)/.test(parent || '')
 }
+const isGameDistUrl = () => hostname.includes('gamedistribution.com')
 
-const isNotPlattformBuild = !isCrazyWeb && !isWaveDash && !isItch && !isGlitch
-const allowedToShowOnCrazyGames = computed(() => (isCrazyWeb && isCrazyGamesUrl()) || isNotPlattformBuild)
-const allowedToShowOnWaveDash = computed(() => (isWaveDash && isWaveDashUrl()) || isNotPlattformBuild)
-const allowedToShowOnItch = computed(() => (isItch && isItchUrl()) || isNotPlattformBuild)
+
+const isNotPlatformBuild = (!isCrazyWeb && !isWaveDash && !isItch && !isGlitch && !isGameDistribution)
+const allowedToShowOnCrazyGames = computed(() => (isCrazyWeb && isCrazyGamesUrl()) || isNotPlatformBuild)
+const allowedToShowOnWaveDash = computed(() => (isWaveDash && isWaveDashUrl()) || isNotPlatformBuild)
+const allowedToShowOnItch = computed(() => (isItch && isItchUrl()) || isNotPlatformBuild)
 const allowedToShowOnGlitch = computed(() =>
-  (isGlitch && isGlitchUrl() && glitchLicenseStatus.value === 'ok') || isNotPlattformBuild
+  (isGlitch && isGlitchUrl() && glitchLicenseStatus.value === 'ok') || isNotPlatformBuild
 )
 const isGlitchDenied = computed(() => isGlitch && glitchLicenseStatus.value === 'denied')
+const allowedToShowOnGameDistribution = computed(() => (isGameDistribution && isGameDistUrl()) || isNotPlatformBuild)
+
+const isGameShowAllowed = allowedToShowOnCrazyGames.value || allowedToShowOnWaveDash.value ||
+  allowedToShowOnItch.value || allowedToShowOnGlitch.value || allowedToShowOnGameDistribution.value
+
+const showOnlyAvailableText = computed(() => (isCrazyWeb || isWaveDash || isItch || isGlitch || isGameDistribution) && glitchLicenseStatus !== 'pending')
+const plattformText = isWaveDash
+  ? 'wavedash.com' : isCrazyWeb
+    ? 'crazygames.com' : isItch
+      ? 'itch.io' : isGlitch
+        ? 'glitch.fun' : isGameDistribution
+          ? 'gamedistribution.com'
+          : ''
 </script>
 
 <template lang="pug">
-  div(v-if="allowedToShowOnCrazyGames || allowedToShowOnWaveDash || allowedToShowOnItch || allowedToShowOnGlitch" id="app-root" class="h-screen h-dvh w-screen app-container root-protection game-ui-immune")
+  div(v-if="isGameShowAllowed" id="app-root" class="h-screen h-dvh w-screen app-container root-protection game-ui-immune")
     FLogoProgress
     FPerfMeter(:offset-y="52")
+    LevelPlayDebugOverlay(v-if="isNative && isDebug")
     RouterView
 
   div.relative.w-full.h-full(v-else-if="isGlitchDenied")
     h1.absolute.text-red-500(class="left-1/2 -translate-x-[50%] top-1/2 -translate-y-[50%] text-3xl") Access Denied: Please purchase a license.
 
-  div.relative.w-full.h-full(v-else-if="(isCrazyWeb || isWaveDash || isItch || isGlitch) && glitchLicenseStatus !== 'pending'")
+  div.relative.w-full.h-full(v-else-if="showOnlyAvailableText")
     h1.absolute(class="left-1/2 -translate-x-[50%] top-1/2 -translate-y-[50%] text-3xl") {{ t('crazyGamesOnly') }}
-      span.ml-2.text-amber-500 {{ isWaveDash ? 'wavedash.com':  isCrazyWeb ? 'crazygames.com' : isItch ? 'itch.io' : isGlitch ? 'glitch.fun': ''}}
+      span.ml-2.text-amber-500 {{ plattformText }}
 </template>
 
 <style lang="sass">

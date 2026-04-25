@@ -4,14 +4,31 @@
 // (midgame interstitial, AdRewardButton, RouletteWheel respin, 2x
 // speed-boost reward) never have to know which provider is active.
 //
+// Three reactive readiness gates:
+//   • `isReady`           — the SDK finished init AND we're in a build
+//                           where ads are expected at all. Coarse gate
+//                           kept for legacy callers.
+//   • `isRewardedReady`   — a rewarded video is currently loaded and
+//                           the next `showRewardedAd()` will play one.
+//                           Drives v-if on AdRewardButton, the roulette
+//                           respin button, and the 2x speed-boost
+//                           switch — anything offering a rewarded ad.
+//   • `isInterstitialReady` — an interstitial is currently loaded.
+//                             Used to gate the midgame battle-cadence
+//                             ad so we don't pause gameplay only to
+//                             fall back to "no fill".
+//
+// Per-format readiness flips false the moment an ad is consumed (or
+// fails to load) and flips back true on the next `onAdLoaded` event
+// from the native SDK. This is what guarantees buttons disappear when
+// inventory runs out — exactly what we want for a kids app where
+// stale "watch ad" prompts that do nothing are user-hostile.
+//
 // Contract notes:
-//   • `isReady` must stay reactive — placements use it as their v-if gate.
-//     A provider that hasn't finished init MUST expose `isReady.value = false`
-//     so the gate hides ad UI instead of showing broken buttons.
-//   • `showRewardedAd` resolves `true` only if the video played all the way
-//     through — callers grant the reward only on `true`.
-//   • `showMidgameAd` resolves when the interstitial finished or errored.
-//     It never rejects: callers `await` it and then resume gameplay.
+//   • `showRewardedAd` resolves `true` only if the video played all the
+//     way through — callers grant the reward only on `true`.
+//   • `showMidgameAd` resolves when the interstitial finished or
+//     errored. It never rejects: callers `await` it and resume gameplay.
 //   • `init` is idempotent and safe to call when the provider is inert
 //     (e.g. Noop on unsupported platforms).
 import type { Ref } from 'vue'
@@ -19,8 +36,12 @@ import type { Ref } from 'vue'
 export interface AdProvider {
   /** Human-readable name for logs / telemetry. */
   readonly name: string
-  /** Reactive gate for ad UI. */
+  /** Reactive: true once the SDK is up and serving ads is possible. */
   readonly isReady: Ref<boolean>
+  /** Reactive: true when a rewarded video is loaded and showable now. */
+  readonly isRewardedReady: Ref<boolean>
+  /** Reactive: true when an interstitial is loaded and showable now. */
+  readonly isInterstitialReady: Ref<boolean>
   init: () => Promise<void>
   showRewardedAd: () => Promise<boolean>
   showMidgameAd: () => Promise<void>

@@ -4,7 +4,7 @@ import { SKINS_PER_TOP, SPECIAL_SKINS, isModelFullyOwned, buySkin, modelImgPath 
 import type { SpinnerModelId } from '@/types/spinner'
 import type { TopPartId } from '@/types/spinner'
 import { resourceCache } from '@/use/useAssets'
-import { isAdsReady, showRewardedAd } from '@/use/useAds'
+import { isRewardedReady, showRewardedAd } from '@/use/useAds'
 
 export interface RouletteResult {
   type: 'multiplier' | 'skin'
@@ -274,7 +274,7 @@ const drawWheel = (rotation: number) => {
 
 // ─── Spin logic ─────────────────────────────────────────────────────────────
 
-const canShowAd = () => isAdsReady.value
+const canShowAd = () => isRewardedReady.value
 
 /** Emit the stored result and finalize. */
 const finalizeResult = () => {

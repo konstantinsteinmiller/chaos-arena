@@ -29,7 +29,13 @@ const provider: AdProvider = isCrazyWeb
     : createNoopProvider()
 
 export const adProviderName = provider.name
+// `isAdsReady` is the coarse "SDK initialised" gate. Most placements
+// should NOT bind directly to it — they want a per-format readiness
+// flag that flips false when no ad is currently loaded, so the UI
+// disappears instead of offering a button that does nothing on tap.
 export const isAdsReady = computed(() => provider.isReady.value)
+export const isRewardedReady = computed(() => provider.isRewardedReady.value)
+export const isInterstitialReady = computed(() => provider.isInterstitialReady.value)
 
 export const initAds = (): Promise<void> => provider.init()
 export const showRewardedAd = (): Promise<boolean> => provider.showRewardedAd()
@@ -38,6 +44,8 @@ export const showMidgameAd = (): Promise<void> => provider.showMidgameAd()
 const useAds = () => ({
   adProviderName,
   isAdsReady,
+  isRewardedReady,
+  isInterstitialReady,
   initAds,
   showRewardedAd,
   showMidgameAd

@@ -67,6 +67,8 @@ export default defineConfig(({ mode, command }) => {
     'https://*.itch.io',
     'https://glitch.fun',
     'https://*.glitch.fun',
+    'https://gamedistribution.com',
+    'https://*.gamedistribution.com',
     'https://www.clarity.ms',
     'https://api.jsonbin.io'
   ]

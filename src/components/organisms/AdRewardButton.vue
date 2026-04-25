@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import IconCoin from '@/components/icons/IconCoin.vue'
-import { isAdsReady, showRewardedAd } from '@/use/useAds'
+import { isRewardedReady, showRewardedAd } from '@/use/useAds'
 import useSpinnerConfig from '@/use/useSpinnerConfig'
 
 interface Props {
@@ -36,7 +36,7 @@ const grantReward = () => {
 <template lang="pug">
   button.adReward.group.cursor-pointer.z-10.transition-transform(
     ref="rootEl"
-    v-if="isAdsReady"
+    v-if="isRewardedReady"
     class="hover:scale-[103%] active:scale-90 scale-80 sm:scale-110"
     @click="triggerAdReward"
   )

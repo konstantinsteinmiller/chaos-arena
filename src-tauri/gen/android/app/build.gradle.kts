@@ -26,6 +26,15 @@ android {
     namespace = "com.chaos.arena"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
+        // AdMob App ID injected into the LevelPlay plugin's manifest via
+        // the `${admobAppId}` placeholder. Sourced from .env.tauri's
+        // `VITE_APP_ADMOB_ANDROID_APP_ID` (loaded into the build process
+        // by `dotenv -e .env.tauri --` in the pnpm tauri:build-android-apk
+        // script). Falls back to Google's documented AdMob test app ID
+        // so a forgotten env var produces a working dev build instead
+        // of a crash on startup.
+        manifestPlaceholders["admobAppId"] = System.getenv("VITE_APP_ADMOB_ANDROID_APP_ID")
+            ?: "ca-app-pub-3940256099942544~3347511713"
         applicationId = "com.chaos.arena"
         minSdk = 24
         targetSdk = 36

@@ -1,34 +1,88 @@
-// Unity LevelPlay (ironSource) provider. Implemented in two phases:
+// Unity LevelPlay (ironSource) provider, wired through the Tauri plugin
+// at `src-tauri/plugins/tauri-plugin-levelplay/`. COPPA / Families
+// Policy flags are applied on the native side BEFORE `LevelPlay.init`
+// so every mediation adapter picks them up — see the Kotlin class doc
+// for the ordering rationale.
 //
-//   Phase 1 (this file, current):
-//     Pure-TS stub. `isReady` stays false and ad calls are inert, so the
-//     four in-game ad placements are automatically hidden on native
-//     builds until the native SDK bridge lands. This is the failsafe
-//     behavior — no broken buttons, no silent-fail rewards.
+// Surface:
+//   • `init()` invokes the native init command once, flips `isReady`
+//     true on success, and is idempotent. Any failure leaves
+//     `isReady` false so the ad placements stay hidden (the "failsafe"
+//     behaviour we want on partially-configured builds).
+//   • `showRewardedAd()` resolves `true` only if the video played all
+//     the way through AND the reward was credited.
+//   • `showMidgameAd()` resolves when the interstitial closed or failed.
 //
-//   Phase 2 (next):
-//     `init()` will invoke the `plugin:levelplay|init` command exposed by
-//     the workspace Tauri plugin at `src-tauri/plugins/tauri-plugin-levelplay/`,
-//     passing the platform-specific app key and a locked set of COPPA/
-//     Families-Policy metadata flags. `isReady` flips true on the
-//     `ad-ready` event from native. Rewarded / interstitial calls are
-//     also Tauri invokes, with the result delivered via events.
+// Per-format readiness (`isRewardedReady`, `isInterstitialReady`)
+// reflects the actual SDK ad-load state, not just init status. The
+// native plugin emits a `rewarded-state` / `interstitial-state` event
+// with `{ ready: boolean }` from the LevelPlay listener callbacks
+// (onAdLoaded → ready=true, onAdLoadFailed/onAdClosed/onAdDisplayFailed
+// → ready=false). The flag flips back to true after the auto-reload
+// queued in onAdClosed succeeds. Components gate v-if on these refs
+// so a "watch ad" button never appears unless an ad is actually
+// loaded and tappable.
 //
-// App keys come from the Vite env (`.env`) — they're public identifiers,
-// not secrets, and ship in the bundle regardless. Android and iOS have
-// distinct keys assigned by the LevelPlay dashboard.
+// App keys & ad unit IDs are platform-specific and ship in the bundle
+// from Vite env vars (they are public identifiers, not secrets).
 import { ref } from 'vue'
+import { invoke, addPluginListener } from '@tauri-apps/api/core'
+import { isDebug } from '@/use/useMatch'
 import type { AdProvider } from './types'
+
+// Force the LevelPlay Test Suite overlay on launch. Driven from
+// .env.tauri's VITE_APP_ADS_TEST_SUITE flag so you can toggle it
+// without flipping the runtime debug flag in localStorage. Keep this
+// set to `false` for production builds — the overlay opens an
+// interactive Activity over the game.
+const forceTestSuite = import.meta.env.VITE_APP_ADS_TEST_SUITE === 'true'
 
 const androidAppKey = import.meta.env.VITE_APP_LEVELPLAY_ANDROID_APP_ID ?? ''
 const iosAppKey = import.meta.env.VITE_APP_LEVELPLAY_IOS_APP_ID ?? ''
+const androidRewardedAdUnit = import.meta.env.VITE_APP_LEVELPLAY_ANDROID_REWARDED_ID ?? ''
+const androidInterstitialAdUnit = import.meta.env.VITE_APP_LEVELPLAY_ANDROID_INTERSTITIAL_ID ?? ''
+const iosRewardedAdUnit = import.meta.env.VITE_APP_LEVELPLAY_IOS_REWARDED_ID ?? ''
+const iosInterstitialAdUnit = import.meta.env.VITE_APP_LEVELPLAY_IOS_INTERSTITIAL_ID ?? ''
 
 const isReady = ref(false)
+const isRewardedReady = ref(false)
+const isInterstitialReady = ref(false)
 let initStarted = false
 
-// Rough platform detection from the user-agent. Good enough to pick the
-// right app key before the Tauri OS plugin is wired — once we add
-// `@tauri-apps/plugin-os` we'll swap this for `platform()`.
+// On-screen debug surface — exported as `levelPlayDebug` and rendered
+// by `LevelPlayDebugOverlay.vue`. Module-level so it's a singleton and
+// any component can read it. Mobile builds have no access to a JS
+// console, so this is the only way to diagnose init/load failures
+// from a sideloaded IPA.
+type LevelPlayInitState = 'idle' | 'no-app-key' | 'starting' | 'ready' | 'failed'
+export const levelPlayDebug = ref({
+  platform: 'unknown' as 'android' | 'ios' | 'other' | 'unknown',
+  appKeyConfigured: false,
+  rewardedIdConfigured: false,
+  interstitialIdConfigured: false,
+  initState: 'idle' as LevelPlayInitState,
+  initError: '' as string,
+  lastRewardedShowError: '' as string,
+  lastInterstitialShowError: '' as string,
+  events: [] as string[]
+})
+
+const stamp = (): string => {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+}
+const logDebug = (msg: string): void => {
+  const line = `${stamp()} ${msg}`
+  // Replace ref with a new object so Vue picks up the change.
+  levelPlayDebug.value = {
+    ...levelPlayDebug.value,
+    events: [...levelPlayDebug.value.events, line].slice(-12)
+  }
+}
+const setDebug = (patch: Partial<typeof levelPlayDebug.value>): void => {
+  levelPlayDebug.value = { ...levelPlayDebug.value, ...patch }
+}
+
 const detectPlatform = (): 'android' | 'ios' | 'other' => {
   if (typeof navigator === 'undefined') return 'other'
   const ua = navigator.userAgent || ''
@@ -37,39 +91,161 @@ const detectPlatform = (): 'android' | 'ios' | 'other' => {
   return 'other'
 }
 
+type InitResponse = { initialized: boolean }
+type ShowAdResponse = { shown: boolean; rewarded?: boolean; error?: string }
+type LaunchTestSuiteResponse = { launched: boolean; error?: string }
+// `error` only present on `ready=false` events triggered by an SDK
+// load/display failure — used by the debug overlay to surface the
+// underlying reason (no fill, invalid unit ID, etc.) on device.
+type StatePayload = { ready: boolean; error?: string }
+
 export const createLevelPlayProvider = (): AdProvider => ({
   name: 'levelplay',
   isReady,
+  isRewardedReady,
+  isInterstitialReady,
   init: async () => {
     if (initStarted) return
     initStarted = true
 
     const platform = detectPlatform()
     const appKey = platform === 'android' ? androidAppKey : platform === 'ios' ? iosAppKey : ''
+    const rewardedAdUnitId =
+      platform === 'android' ? androidRewardedAdUnit : platform === 'ios' ? iosRewardedAdUnit : ''
+    const interstitialAdUnitId =
+      platform === 'android' ? androidInterstitialAdUnit : platform === 'ios' ? iosInterstitialAdUnit : ''
+
+    setDebug({
+      platform,
+      appKeyConfigured: !!appKey,
+      rewardedIdConfigured: !!rewardedAdUnitId,
+      interstitialIdConfigured: !!interstitialAdUnitId
+    })
+    logDebug(`platform=${platform} appKey=${appKey ? 'set' : 'EMPTY'} rew=${rewardedAdUnitId ? 'set' : 'EMPTY'} int=${interstitialAdUnitId ? 'set' : 'EMPTY'}`)
 
     if (!appKey) {
+      setDebug({ initState: 'no-app-key', initError: `no app key for platform "${platform}"` })
+      logDebug('init aborted: no app key')
       console.warn(`[ads/levelplay] no app key for platform "${platform}" — ads disabled`)
       return
     }
 
-    // Phase 2 will replace this with:
-    //   await invoke('plugin:levelplay|init', {
-    //     appKey,
-    //     isChildDirected: true,
-    //     admobTfcd: true,
-    //     admobTfua: true,
-    //     deviceIdOptOut: true,
-    //     metaMixedAudience: false
-    //   })
-    //   listen('levelplay://ready', () => { isReady.value = true })
-    console.info(`[ads/levelplay] stub init — platform=${platform}, appKey=${appKey.slice(0, 6)}… (native bridge pending)`)
+    // Subscribe to per-format readiness events BEFORE invoking init.
+    // The plugin's `onAdLoaded` may fire synchronously inside the init
+    // success callback if a cached ad was already available, so racing
+    // the listener registration after init is risky. The listeners are
+    // safe to register before init: the plugin queues `trigger()` calls
+    // until the webview is ready to receive them.
+    try {
+      await addPluginListener<StatePayload>('levelplay', 'rewarded-state', (data) => {
+        const r = !!data?.ready
+        isRewardedReady.value = r
+        const err = data?.error ?? ''
+        logDebug(`rewarded-state ready=${r}${err ? ` err="${err}"` : ''}`)
+        if (err) setDebug({ lastRewardedShowError: err })
+      })
+      await addPluginListener<StatePayload>('levelplay', 'interstitial-state', (data) => {
+        const r = !!data?.ready
+        isInterstitialReady.value = r
+        const err = data?.error ?? ''
+        logDebug(`interstitial-state ready=${r}${err ? ` err="${err}"` : ''}`)
+        if (err) setDebug({ lastInterstitialShowError: err })
+      })
+      logDebug('listeners subscribed')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      logDebug(`listener subscribe failed: ${msg}`)
+      console.warn('[ads/levelplay] failed to subscribe to state events', e)
+    }
+
+    try {
+      setDebug({ initState: 'starting' })
+      logDebug('invoke plugin:levelplay|init')
+      const res = await invoke<InitResponse>('plugin:levelplay|init', {
+        payload: {
+          appKey,
+          rewardedAdUnitId,
+          interstitialAdUnitId,
+          isChildDirected: true,
+          admobTfcd: true,
+          admobTfua: true,
+          deviceIdOptOut: true,
+          metaMixedAudience: false,
+          enableTestSuite: isDebug.value || forceTestSuite
+        }
+      })
+      if (res.initialized) {
+        isReady.value = true
+        setDebug({ initState: 'ready', initError: '' })
+        logDebug('init OK')
+      } else {
+        setDebug({ initState: 'failed', initError: 'plugin returned initialized=false' })
+        logDebug('init returned initialized=false')
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setDebug({ initState: 'failed', initError: msg })
+      logDebug(`init threw: ${msg}`)
+      console.warn('[ads/levelplay] init failed', e)
+    }
   },
   showRewardedAd: async () => {
-    // Phase 2: await invoke('plugin:levelplay|show_rewarded') and resolve
-    // with the boolean delivered by the `levelplay://rewarded` event.
-    return false
+    if (!isReady.value) {
+      logDebug('show_rewarded skipped: not ready')
+      return false
+    }
+    try {
+      logDebug('invoke show_rewarded')
+      const res = await invoke<ShowAdResponse>('plugin:levelplay|show_rewarded')
+      logDebug(`show_rewarded → shown=${res.shown} rewarded=${res.rewarded ?? false}${res.error ? ' err=' + res.error : ''}`)
+      if (res.error) setDebug({ lastRewardedShowError: res.error })
+      return res.rewarded === true
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setDebug({ lastRewardedShowError: msg })
+      logDebug(`show_rewarded threw: ${msg}`)
+      console.warn('[ads/levelplay] show_rewarded failed', e)
+      return false
+    }
   },
+  // Not part of the cross-provider AdProvider surface — exposed via the
+  // module export `launchLevelPlayTestSuite` below for the debug overlay.
   showMidgameAd: async () => {
-    // Phase 2: await invoke('plugin:levelplay|show_interstitial').
+    if (!isReady.value) {
+      logDebug('show_interstitial skipped: not ready')
+      return
+    }
+    try {
+      logDebug('invoke show_interstitial')
+      const res = await invoke<ShowAdResponse>('plugin:levelplay|show_interstitial')
+      logDebug(`show_interstitial → shown=${res.shown}${res.error ? ' err=' + res.error : ''}`)
+      if (res.error) setDebug({ lastInterstitialShowError: res.error })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setDebug({ lastInterstitialShowError: msg })
+      logDebug(`show_interstitial threw: ${msg}`)
+      console.warn('[ads/levelplay] show_interstitial failed', e)
+    }
   }
 })
+
+// LevelPlay debug Test Suite launcher. Not part of the cross-provider
+// AdProvider interface because no other provider has an analogue —
+// exported as a standalone function so the on-device debug overlay can
+// trigger it. The native side also auto-launches on init when
+// `enableTestSuite=true` (currently only Android does this; iOS just
+// sets the metadata and waits for an explicit launch). This explicit
+// command works on both platforms regardless.
+export const launchLevelPlayTestSuite = async (): Promise<boolean> => {
+  try {
+    logDebug('invoke launch_test_suite')
+    const res = await invoke<LaunchTestSuiteResponse>('plugin:levelplay|launch_test_suite')
+    logDebug(`launch_test_suite → launched=${res.launched}${res.error ? ' err=' + res.error : ''}`)
+    return res.launched === true
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    logDebug(`launch_test_suite threw: ${msg}`)
+    console.warn('[ads/levelplay] launch_test_suite failed', e)
+    return false
+  }
+}
